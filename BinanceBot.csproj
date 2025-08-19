@@ -14,5 +14,6 @@
 
   <ItemGroup>
     <PackageReference Include="Skender.Stock.Indicators" Version="2.6.1" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.0" />
   </ItemGroup>
 </Project>
