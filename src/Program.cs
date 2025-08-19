@@ -94,10 +94,10 @@ async Task RunSymbolAsync(string symbol)
 
     // use the last fully closed bar
     var last = klines[^1];
-    var lastEma50 = ema50[^1].Ema ?? 0m;
-    var lastEma200 = ema200[^1].Ema ?? 0m;
-    var lastRsi = rsi[^1].Rsi ?? 50m;
-    var lastAtr = atr[^1].Atr ?? 0m;
+    var lastEma50 = (decimal)(ema50[^1].Ema ?? 0d);
+    var lastEma200 = (decimal)(ema200[^1].Ema ?? 0d);
+    var lastRsi = (decimal)(rsi[^1].Rsi ?? 50d);
+    var lastAtr = (decimal)(atr[^1].Atr ?? 0d);
 
     // 2) trend + entry logic
     var trendUp = lastEma50 > lastEma200;
@@ -198,8 +198,7 @@ record AppSettings(
     string Interval,
     string[] Symbols)
 {
-    [JsonIgnore]
-    public string BaseUrl => UseTestnet ? "https://testnet.binancefuture.com" : "https://fapi.binance.com";
+    [JsonIgnore] public string BaseUrl => UseTestnet ? "https://testnet.binancefuture.com" : "https://fapi.binance.com";
 
     public static AppSettings Load()
     {
@@ -207,11 +206,11 @@ record AppSettings(
         return new AppSettings(
             ApiKey: Environment.GetEnvironmentVariable("BINANCE_API_KEY") ?? "YOUR_TESTNET_API_KEY",
             ApiSecret: Environment.GetEnvironmentVariable("BINANCE_API_SECRET") ?? "YOUR_TESTNET_SECRET",
-            UseTestnet: true,         // flip to false for live
+            UseTestnet: true, // flip to false for live
             Leverage: 3,
-            RiskPerTradePct: 0.01m,   // 1% risk per trade
-            AtrMultiple: 1.5m,        // SL distance
-            Rrr: 2.0m,                // take profit multiple
+            RiskPerTradePct: 0.01m, // 1% risk per trade
+            AtrMultiple: 1.5m, // SL distance
+            Rrr: 2.0m, // take profit multiple
             Interval: "1h",
             Symbols: new[] { "BTCUSDT", "ETHUSDT" }
         );
@@ -236,7 +235,7 @@ class BinanceFuturesClient
     // Public market data (no auth)
     public async Task<List<Kline>> GetKlinesAsync(string symbol, string interval, int limit = 500)
     {
-        var url = $"/fapi/v1/klines?symbol={symbol.ToUpper()}&interval={interval}&limit={Math.Clamp(limit,1,1500)}";
+        var url = $"/fapi/v1/klines?symbol={symbol.ToUpper()}&interval={interval}&limit={Math.Clamp(limit, 1, 1500)}";
         var res = await _http.GetAsync(url);
         res.EnsureSuccessStatusCode();
         var json = await res.Content.ReadAsStringAsync();
@@ -367,6 +366,7 @@ class BinanceFuturesClient
             if (type == "LOT_SIZE") step = decimal.Parse(f.GetProperty("stepSize").GetString()!);
             if (type == "MIN_NOTIONAL" && f.TryGetProperty("notional", out var n)) minNotional = decimal.Parse(n.GetString()!);
         }
+
         return new SymbolFilters(step, tick, minNotional);
     }
 
@@ -399,6 +399,7 @@ class BinanceFuturesClient
             b = bytes[i] & 0xF;
             c[i * 2 + 1] = (char)(55 + b + (((b - 10) >> 31) & -7));
         }
+
         return new string(c);
     }
 
@@ -446,9 +447,17 @@ class PositionRisk
 
 record OrderResult(bool Success, string? Error);
 
-enum OrderSide { Buy, Sell }
+enum OrderSide
+{
+    Buy,
+    Sell
+}
 
-enum PositionSide { Long, Short }
+enum PositionSide
+{
+    Long,
+    Short
+}
 
 record SymbolFilters(decimal StepSize, decimal TickSize, decimal MinNotional)
 {
