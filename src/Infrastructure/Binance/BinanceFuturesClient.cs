@@ -19,10 +19,14 @@ public class BinanceFuturesClient : IExchangeClient
     public BinanceFuturesClient(HttpClient http, AppSettings settings, BinanceOptions options)
     {
         _http = http;
-        _http.BaseAddress = new Uri(options.BaseUrl);
         _apiKey = settings.ApiKey;
         _secret = settings.ApiSecret;
-        _options = options;
+
+        // Do NOT shadow the parameter. Keep a single source of truth:
+        _options = options ?? new BinanceOptions(settings.UseTestnet);
+
+        // Use BaseAddress; remove any _baseUrl field throughout the class.
+        _http.BaseAddress = new Uri(_options.BaseUrl);
     }
 
     public async Task<List<Kline>> GetKlinesAsync(string symbol, string interval, int limit = 500)
