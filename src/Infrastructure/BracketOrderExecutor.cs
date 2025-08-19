@@ -1,4 +1,5 @@
 using Application;
+using Serilog;
 
 namespace Infrastructure;
 
@@ -25,14 +26,14 @@ public class BracketOrderExecutor : IOrderExecutor
 
         if (_dryRun)
         {
-            Console.WriteLine($"{symbol}: [DRY] OPEN {side} qty={qty} @~{price:F2} | SL={slPrice:F2} TP={tpPrice:F2}");
+            Log.Information("{Symbol}: [DRY] OPEN {Side} qty={Qty} price={Price:F2} SL={Sl:F2} TP={Tp:F2}", symbol, side, qty, price, slPrice, tpPrice);
             return;
         }
 
         var entry = await _exchange.PlaceMarketAsync(symbol, side, qty);
         if (!entry.Success)
         {
-            Console.WriteLine($"{symbol}: entry failed — {entry.Error}");
+            Log.Error("{Symbol}: entry failed qty={Qty} price={Price:F2} error={Error}", symbol, qty, price, entry.Error);
             return;
         }
 
@@ -40,7 +41,7 @@ public class BracketOrderExecutor : IOrderExecutor
         await _exchange.PlaceStopMarketCloseAsync(symbol, exitSide, slPrice);
         await _exchange.PlaceTakeProfitMarketCloseAsync(symbol, exitSide, tpPrice);
 
-        Console.WriteLine($"{symbol}: OPEN {side} qty={qty} @~{price:F2} | SL={slPrice:F2} TP={tpPrice:F2}");
+        Log.Information("{Symbol}: OPEN {Side} qty={Qty} price={Price:F2} SL={Sl:F2} TP={Tp:F2}", symbol, side, qty, price, slPrice, tpPrice);
     }
 
     public async Task FlipCloseAsync(string symbol, PositionSide posSide)
@@ -49,11 +50,11 @@ public class BracketOrderExecutor : IOrderExecutor
 
         if (_dryRun)
         {
-            Console.WriteLine($"{symbol}: flip detected — [DRY] would close {sideLabel} at market");
+            Log.Information("{Symbol}: flip detected — [DRY] close {Side}", symbol, sideLabel);
             return;
         }
 
-        Console.WriteLine($"{symbol}: flip detected — closing {sideLabel} at market");
+        Log.Information("{Symbol}: flip detected — closing {Side} at market", symbol, sideLabel);
         await _exchange.ClosePositionMarketAsync(symbol, posSide);
     }
 }
