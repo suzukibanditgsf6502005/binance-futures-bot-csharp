@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Application;
+using Serilog;
 
 namespace Infrastructure.Binance;
 
@@ -12,20 +13,19 @@ public class BinanceFuturesClient : IExchangeClient
     private readonly HttpClient _http;
     private readonly string _apiKey;
     private readonly string _secret;
-    private readonly bool _testnet;
+    private static readonly Random _jitter = new();
 
-    public BinanceFuturesClient(HttpClient http, string apiKey, string secret, bool testnet)
+    public BinanceFuturesClient(HttpClient http, AppSettings settings)
     {
         _http = http;
-        _apiKey = apiKey;
-        _secret = secret;
-        _testnet = testnet;
+        _apiKey = settings.ApiKey;
+        _secret = settings.ApiSecret;
     }
 
     public async Task<List<Kline>> GetKlinesAsync(string symbol, string interval, int limit = 500)
     {
         var url = $"/fapi/v1/klines?symbol={symbol.ToUpper()}&interval={interval}&limit={Math.Clamp(limit, 1, 1500)}";
-        var res = await _http.GetAsync(url);
+        var res = await SendWithRetryAsync(() => _http.GetAsync(url));
         res.EnsureSuccessStatusCode();
         var json = await res.Content.ReadAsStringAsync();
 
@@ -147,7 +147,7 @@ public class BinanceFuturesClient : IExchangeClient
 
     public async Task<SymbolFilters> GetSymbolFiltersAsync(string symbol)
     {
-        var res = await _http.GetAsync($"/fapi/v1/exchangeInfo?symbol={symbol.ToUpper()}");
+        var res = await SendWithRetryAsync(() => _http.GetAsync($"/fapi/v1/exchangeInfo?symbol={symbol.ToUpper()}"));
         res.EnsureSuccessStatusCode();
         var json = await res.Content.ReadAsStringAsync();
         var doc = JsonDocument.Parse(json);
@@ -176,14 +176,14 @@ public class BinanceFuturesClient : IExchangeClient
 
         var req = new HttpRequestMessage(method, requestUri);
         req.Headers.Add("X-MBX-APIKEY", _apiKey);
-        var resp = await _http.SendAsync(req);
+        var resp = await SendWithRetryAsync(() => _http.SendAsync(req));
         var body = await resp.Content.ReadAsStringAsync();
         return (resp.IsSuccessStatusCode, body);
     }
 
     public async Task<ServerTime> GetServerTimeAsync()
     {
-        var r = await _http.GetAsync("/fapi/v1/time");
+        var r = await SendWithRetryAsync(() => _http.GetAsync("/fapi/v1/time"));
         r.EnsureSuccessStatusCode();
         var json = await r.Content.ReadAsStringAsync();
         var doc = JsonDocument.Parse(json);
@@ -211,5 +211,30 @@ public class BinanceFuturesClient : IExchangeClient
         using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(_secret));
         var hash = hmac.ComputeHash(Encoding.UTF8.GetBytes(payload));
         return ToHex(hash).ToLowerInvariant();
+    }
+
+    private static bool ShouldRetry(HttpResponseMessage response)
+    {
+        var code = (int)response.StatusCode;
+        return code == 429 || code >= 500;
+    }
+
+    private async Task<HttpResponseMessage> SendWithRetryAsync(Func<Task<HttpResponseMessage>> send)
+    {
+        for (var attempt = 0; attempt < 5; attempt++)
+        {
+            var response = await send();
+            if (!ShouldRetry(response) || attempt == 4)
+            {
+                return response;
+            }
+
+            var delay = TimeSpan.FromSeconds(Math.Pow(2, attempt)) + TimeSpan.FromMilliseconds(_jitter.Next(0, 1000));
+            Log.Warning("HTTP {Status} received, retrying in {Delay} (attempt {Attempt})", (int)response.StatusCode, delay, attempt + 1);
+            response.Dispose();
+            await Task.Delay(delay);
+        }
+
+        throw new InvalidOperationException("Retry logic failure");
     }
 }

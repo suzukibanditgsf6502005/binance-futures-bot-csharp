@@ -25,6 +25,9 @@ Day-trading bot for Binance USDT-M Futures. Strategy: EMA(50/200) trend filter +
    ```bash
    dotnet run --project BinanceBot.csproj -- --dry
    ```
+
+## Logs
+Logs are written to the console and to rolling files in `./logs` (e.g. `logs/log-YYYYMMDD.txt`).
 ## Config (AppSettings)
 - `UseTestnet`: `true` for dry-run
 - `Leverage`: e.g. `3`

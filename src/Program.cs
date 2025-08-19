@@ -5,8 +5,15 @@ using Microsoft.Extensions.Hosting;
 using Application;
 using Infrastructure.Binance;
 using Infrastructure;
+using Serilog;
+
+Log.Logger = new LoggerConfiguration()
+    .WriteTo.Console()
+    .WriteTo.File("logs/log-.txt", rollingInterval: RollingInterval.Day)
+    .CreateLogger();
 
 var builder = Host.CreateDefaultBuilder(args)
+    .UseSerilog()
     .ConfigureServices((context, services) =>
     {
         var settings = AppSettings.Load();
@@ -30,4 +37,11 @@ var builder = Host.CreateDefaultBuilder(args)
         services.AddHostedService<BotHostedService>();
     });
 
-await builder.Build().RunAsync();
+try
+{
+    await builder.Build().RunAsync();
+}
+finally
+{
+    Log.CloseAndFlush();
+}

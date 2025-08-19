@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Hosting;
 using Skender.Stock.Indicators;
+using Serilog;
 
 namespace Application;
 
@@ -28,20 +29,20 @@ public class BotHostedService : IHostedService
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        Console.WriteLine($"Binance Futures bot starting (Testnet={_settings.UseTestnet}) @ {DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss}");
+        Log.Information("Binance Futures bot starting (Testnet={Testnet})", _settings.UseTestnet);
         if (_dryRun)
-            Console.WriteLine("Dry-run mode: orders will not be placed.");
+            Log.Information("Dry-run mode: orders will not be placed.");
 
         foreach (var s in _settings.Symbols)
         {
             _symbolMeta[s] = await _exchange.GetSymbolFiltersAsync(s);
-            Console.WriteLine($"Loaded filters for {s}: tickSize={_symbolMeta[s].TickSize}, stepSize={_symbolMeta[s].StepSize}");
+            Log.Information("Loaded filters for {Symbol}: tickSize={Tick} stepSize={Step}", s, _symbolMeta[s].TickSize, _symbolMeta[s].StepSize);
         }
 
         foreach (var s in _settings.Symbols)
         {
             await _exchange.SetLeverageAsync(s, _settings.Leverage);
-            Console.WriteLine($"Leverage set to x{_settings.Leverage} on {s}");
+            Log.Information("Leverage set to x{Leverage} on {Symbol}", _settings.Leverage, s);
         }
 
         _timer = new PeriodicTimer(TimeSpan.FromMinutes(1));
@@ -61,7 +62,7 @@ public class BotHostedService : IHostedService
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[ERROR] {ex.Message}\n{ex}");
+                Log.Error(ex, "Execution error");
             }
         }
     }
@@ -83,7 +84,7 @@ public class BotHostedService : IHostedService
 
         if (!klines[^1].IsClosed)
         {
-            Console.WriteLine($"{symbol}: last candle not closed yet — skipping.");
+            Log.Information("{Symbol}: last candle not closed yet — skipping", symbol);
             return;
         }
 
@@ -103,6 +104,7 @@ public class BotHostedService : IHostedService
         var last = klines[^1];
         var lastAtr = (decimal)(atr[^1].Atr ?? 0d);
         var signal = _strategy.Evaluate(quotes);
+        Log.Information("{Symbol}: signal {Signal} @ {Price}", symbol, signal, last.Close);
 
         var pos = await _exchange.GetPositionRiskAsync(symbol);
         var hasLong = pos.PositionAmt > 0m;
@@ -115,7 +117,7 @@ public class BotHostedService : IHostedService
 
         if (qty <= 0m)
         {
-            Console.WriteLine($"{symbol}: qty too small after filters — risk={riskPerTrade:F2} stop={stopDistance:F2} price={last.Close:F2}");
+            Log.Information("{Symbol}: qty too small after filters risk={Risk:F2} stop={Stop:F2} price={Price:F2}", symbol, riskPerTrade, stopDistance, last.Close);
             return;
         }
 
@@ -131,7 +133,7 @@ public class BotHostedService : IHostedService
             }
             else
             {
-                Console.WriteLine($"{symbol}: no signal.");
+                Log.Information("{Symbol}: no signal", symbol);
             }
         }
         else
