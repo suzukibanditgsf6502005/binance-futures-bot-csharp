@@ -13,11 +13,15 @@ public class BotHostedService : IHostedService
     private readonly IRiskManager _riskManager;
     private readonly IOrderExecutor _orderExecutor;
     private readonly Dictionary<string, SymbolFilters> _symbolMeta = new(StringComparer.OrdinalIgnoreCase);
+    private readonly IAlertService _alerts;
+    private readonly Dictionary<string, TradeInfo> _trades = new(StringComparer.OrdinalIgnoreCase);
     private PeriodicTimer? _timer;
     private Task? _executingTask;
     private readonly CancellationTokenSource _cts = new();
 
-    public BotHostedService(IExchangeClient exchange, AppSettings settings, BotOptions options, IStrategy strategy, IRiskManager riskManager, IOrderExecutor orderExecutor)
+    private record TradeInfo(OrderSide Side, decimal Sl, decimal Tp);
+
+    public BotHostedService(IExchangeClient exchange, AppSettings settings, BotOptions options, IStrategy strategy, IRiskManager riskManager, IOrderExecutor orderExecutor, IAlertService alerts)
     {
         _exchange = exchange;
         _settings = settings;
@@ -25,6 +29,7 @@ public class BotHostedService : IHostedService
         _strategy = strategy;
         _riskManager = riskManager;
         _orderExecutor = orderExecutor;
+        _alerts = alerts;
     }
 
     public async Task StartAsync(CancellationToken cancellationToken)
@@ -63,6 +68,7 @@ public class BotHostedService : IHostedService
             catch (Exception ex)
             {
                 Log.Error(ex, "Execution error");
+                await _alerts.SendAsync($"Execution error: {ex.Message}");
             }
         }
     }
@@ -110,6 +116,25 @@ public class BotHostedService : IHostedService
         var hasLong = pos.PositionAmt > 0m;
         var hasShort = pos.PositionAmt < 0m;
 
+        if (!hasLong && !hasShort && _trades.TryGetValue(symbol, out var closed))
+        {
+            if (closed.Side == OrderSide.Buy)
+            {
+                if (last.Close <= closed.Sl)
+                    await _alerts.SendAsync($"{symbol}: SL hit at {last.Close:F2}");
+                else if (last.Close >= closed.Tp)
+                    await _alerts.SendAsync($"{symbol}: TP hit at {last.Close:F2}");
+            }
+            else
+            {
+                if (last.Close >= closed.Sl)
+                    await _alerts.SendAsync($"{symbol}: SL hit at {last.Close:F2}");
+                else if (last.Close <= closed.Tp)
+                    await _alerts.SendAsync($"{symbol}: TP hit at {last.Close:F2}");
+            }
+            _trades.Remove(symbol);
+        }
+
         var account = await _exchange.GetAccountBalanceAsync();
         var qty = _riskManager.CalculateQty(account.AvailableBalance, lastAtr, last.Close, _settings, _symbolMeta[symbol]);
         var riskPerTrade = _settings.RiskPerTradePct * account.AvailableBalance;
@@ -126,10 +151,16 @@ public class BotHostedService : IHostedService
             if (signal == TradeSignal.Long)
             {
                 await _orderExecutor.OpenWithBracketAsync(symbol, OrderSide.Buy, qty, last.Close, stopDistance, _symbolMeta[symbol]);
+                var sl = _symbolMeta[symbol].ClampPrice(last.Close - stopDistance);
+                var tp = _symbolMeta[symbol].ClampPrice(last.Close + stopDistance * _settings.Rrr);
+                _trades[symbol] = new TradeInfo(OrderSide.Buy, sl, tp);
             }
             else if (signal == TradeSignal.Short)
             {
                 await _orderExecutor.OpenWithBracketAsync(symbol, OrderSide.Sell, qty, last.Close, stopDistance, _symbolMeta[symbol]);
+                var sl = _symbolMeta[symbol].ClampPrice(last.Close + stopDistance);
+                var tp = _symbolMeta[symbol].ClampPrice(last.Close - stopDistance * _settings.Rrr);
+                _trades[symbol] = new TradeInfo(OrderSide.Sell, sl, tp);
             }
             else
             {
@@ -141,10 +172,12 @@ public class BotHostedService : IHostedService
             if (hasLong && signal == TradeSignal.Short)
             {
                 await _orderExecutor.FlipCloseAsync(symbol, PositionSide.Long);
+                _trades.Remove(symbol);
             }
             else if (hasShort && signal == TradeSignal.Long)
             {
                 await _orderExecutor.FlipCloseAsync(symbol, PositionSide.Short);
+                _trades.Remove(symbol);
             }
         }
     }
