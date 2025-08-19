@@ -43,7 +43,7 @@ public class OrderExecutorDryRunTests
     public async Task DryRunDoesNotCallSignedEndpoints()
     {
         var exchange = new FakeExchangeClient();
-        var settings = AppSettings.Load();
+        var settings = new AppSettings { ApiKey = "test", ApiSecret = "test" };
         var executor = new BracketOrderExecutor(exchange, settings, new BotOptions(true), new NoopAlertService());
         var filters = new SymbolFilters(0.001m, 0.1m, 5m);
 

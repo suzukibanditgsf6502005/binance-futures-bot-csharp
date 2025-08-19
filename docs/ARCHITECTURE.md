@@ -12,7 +12,8 @@
 - **Scheduler:** 1-minute tick; acts on closed 1h candles
 
 ## Config & Secrets
-- `AppSettings.Load()` reads env vars for API Keys; defaults to Testnet; later move to `appsettings.*.json` if desired (secrets excluded from git)
+- Options pattern binds `AppSettings` from `appsettings.{Environment}.json`
+- API keys are injected via `BINANCE_API_KEY` / `BINANCE_API_SECRET` env vars
 
 ## Logging
 - Console logs for actions, errors, and filter clamps

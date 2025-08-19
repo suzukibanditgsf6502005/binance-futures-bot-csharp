@@ -1,40 +1,42 @@
+using System.ComponentModel.DataAnnotations;
 using System.Text.Json.Serialization;
-using Microsoft.Extensions.Configuration;
 
-public record AppSettings
+public class AppSettings
 {
-    public string ApiKey { get; init; } = Environment.GetEnvironmentVariable("BINANCE_API_KEY") ?? "YOUR_TESTNET_API_KEY";
-    public string ApiSecret { get; init; } = Environment.GetEnvironmentVariable("BINANCE_API_SECRET") ?? "YOUR_TESTNET_SECRET";
-    public bool UseTestnet { get; init; } = true;
-    public int Leverage { get; init; } = 3;
-    public decimal RiskPerTradePct { get; init; } = 0.01m;
-    public decimal AtrMultiple { get; init; } = 1.5m;
-    public decimal Rrr { get; init; } = 2.0m;
-    public decimal BreakEvenAtRr { get; init; } = 1.0m;
-    public decimal AtrTrailMultiple { get; init; } = 1.0m;
-    public string Interval { get; init; } = "1h";
-    public string[] Symbols { get; init; } = new[] { "BTCUSDT", "ETHUSDT" };
-    public int FundingBlackoutMinutes { get; init; } = 10;
-    public decimal AtrPercentileMin { get; init; } = 0m;
-    public decimal AtrPercentileMax { get; init; } = 100m;
+    [Required]
+    public string ApiKey { get; set; } = string.Empty;
+
+    [Required]
+    public string ApiSecret { get; set; } = string.Empty;
+
+    public bool UseTestnet { get; set; } = true;
+
+    public int Leverage { get; set; } = 3;
+
+    public decimal RiskPerTradePct { get; set; } = 0.01m;
+
+    public decimal AtrMultiple { get; set; } = 1.5m;
+
+    public decimal Rrr { get; set; } = 2.0m;
+
+    public decimal BreakEvenAtRr { get; set; } = 1.0m;
+
+    public decimal AtrTrailMultiple { get; set; } = 1.0m;
+
+    [Required]
+    public string Interval { get; set; } = "1h";
+
+    [MinLength(1)]
+    public string[] Symbols { get; set; } = new[] { "BTCUSDT", "ETHUSDT" };
+
+    public int FundingBlackoutMinutes { get; set; } = 10;
+
+    public decimal AtrPercentileMin { get; set; } = 0m;
+
+    public decimal AtrPercentileMax { get; set; } = 100m;
 
     [JsonIgnore]
     public string BaseUrl => UseTestnet ? "https://testnet.binancefuture.com" : "https://fapi.binance.com";
-
-    public static AppSettings Load(IConfiguration? config = null)
-    {
-        var settings = config?.Get<AppSettings>() ?? new AppSettings();
-
-        var apiKey = Environment.GetEnvironmentVariable("BINANCE_API_KEY");
-        var apiSecret = Environment.GetEnvironmentVariable("BINANCE_API_SECRET");
-
-        if (!string.IsNullOrWhiteSpace(apiKey))
-            settings = settings with { ApiKey = apiKey };
-        if (!string.IsNullOrWhiteSpace(apiSecret))
-            settings = settings with { ApiSecret = apiSecret };
-
-        return settings;
-    }
 }
 
 public record ServerTime(DateTimeOffset Time);

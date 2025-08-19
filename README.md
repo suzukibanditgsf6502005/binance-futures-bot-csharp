@@ -41,7 +41,44 @@ Set up optional Telegram notifications for entry, SL/TP hits, flips, and errors.
    export TELEGRAM_ALERTS_ENABLED=1
    ```
    Remove `TELEGRAM_ALERTS_ENABLED` or set it to another value to disable alerts.
-## Config (AppSettings)
+## Configuration
+
+Settings are bound using the Options pattern. Non-secret values come from
+`appsettings.{Environment}.json` files while API keys are read from environment
+variables.
+
+Hierarchy (lowest to highest):
+1. `appsettings.json` (optional)
+2. `appsettings.{Environment}.json`
+3. Environment variables (`BINANCE_API_KEY`, `BINANCE_API_SECRET`)
+
+Select environment via `DOTNET_ENVIRONMENT=Development` (default is
+`Production`). Copy one of the provided examples and adjust:
+
+```bash
+cp appsettings.Development.json.example appsettings.Development.json
+# or
+cp appsettings.Production.json.example appsettings.Production.json
+```
+
+Example `appsettings.Development.json`:
+
+```json
+{
+  "UseTestnet": true,
+  "Leverage": 3,
+  "RiskPerTradePct": 0.01,
+  "AtrMultiple": 1.5,
+  "Rrr": 2.0,
+  "FundingBlackoutMinutes": 10,
+  "AtrPercentileMin": 0,
+  "AtrPercentileMax": 100,
+  "Interval": "1h",
+  "Symbols": ["BTCUSDT","ETHUSDT"]
+}
+```
+
+### AppSettings
 - `UseTestnet`: `true` for dry-run
 - `Leverage`: e.g. `3`
 - `RiskPerTradePct`: e.g. `0.01` (1% risk)
