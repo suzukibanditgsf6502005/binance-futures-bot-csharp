@@ -5,6 +5,7 @@
 // Build: dotnet add package Skender.Stock.Indicators
 // Run:   dotnet run --project .
 
+using System.Globalization;
 using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text;
@@ -239,18 +240,36 @@ class BinanceFuturesClient
         var res = await _http.GetAsync(url);
         res.EnsureSuccessStatusCode();
         var json = await res.Content.ReadAsStringAsync();
-        var raw = JsonSerializer.Deserialize<List<object[]>>(json)!;
-        return raw.Select(r => new Kline
+
+        using var doc = JsonDocument.Parse(json);
+        var arr = doc.RootElement;
+        var list = new List<Kline>(arr.GetArrayLength());
+
+        foreach (var e in arr.EnumerateArray())
         {
-            OpenTimeUtc = DateTimeOffset.FromUnixTimeMilliseconds((long)Convert.ToDouble(r[0]!)).UtcDateTime,
-            Open = decimal.Parse(r[1]!.ToString()!),
-            High = decimal.Parse(r[2]!.ToString()!),
-            Low = decimal.Parse(r[3]!.ToString()!),
-            Close = decimal.Parse(r[4]!.ToString()!),
-            Volume = decimal.Parse(r[5]!.ToString()!),
-            CloseTimeUtc = DateTimeOffset.FromUnixTimeMilliseconds((long)Convert.ToDouble(r[6]!)).UtcDateTime,
-            IsClosed = true // klines endpoint returns closed candles up to latest closed
-        }).ToList();
+            // e to tablica: [0]=openTime, [1]=open, [2]=high, [3]=low, [4]=close, [5]=volume, [6]=closeTime, ...
+            var openTime = DateTimeOffset.FromUnixTimeMilliseconds(e[0].GetInt64()).UtcDateTime;
+            var open  = decimal.Parse(e[1].GetString()!, CultureInfo.InvariantCulture);
+            var high  = decimal.Parse(e[2].GetString()!, CultureInfo.InvariantCulture);
+            var low   = decimal.Parse(e[3].GetString()!, CultureInfo.InvariantCulture);
+            var close = decimal.Parse(e[4].GetString()!, CultureInfo.InvariantCulture);
+            var vol   = decimal.Parse(e[5].GetString()!, CultureInfo.InvariantCulture);
+            var closeTime = DateTimeOffset.FromUnixTimeMilliseconds(e[6].GetInt64()).UtcDateTime;
+
+            list.Add(new Kline
+            {
+                OpenTimeUtc = openTime,
+                Open = open,
+                High = high,
+                Low = low,
+                Close = close,
+                Volume = vol,
+                CloseTimeUtc = closeTime,
+                IsClosed = true
+            });
+        }
+
+        return list;
     }
 
     public async Task<ServerTime> GetServerTimeAsync()
