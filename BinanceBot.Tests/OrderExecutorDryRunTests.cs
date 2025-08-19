@@ -1,4 +1,5 @@
 using Application;
+using Infrastructure;
 
 namespace BinanceBot.Tests;
 
@@ -43,7 +44,7 @@ public class OrderExecutorDryRunTests
     {
         var exchange = new FakeExchangeClient();
         var settings = AppSettings.Load();
-        var executor = new Infrastructure.BracketOrderExecutor(exchange, settings, new BotOptions(true));
+        var executor = new BracketOrderExecutor(exchange, settings, new BotOptions(true), new NoopAlertService());
         var filters = new SymbolFilters(0.001m, 0.1m, 5m);
 
         await executor.OpenWithBracketAsync("BTCUSDT", OrderSide.Buy, 1m, 100m, 1m, filters);

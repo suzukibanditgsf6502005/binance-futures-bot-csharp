@@ -8,12 +8,14 @@ public class BracketOrderExecutor : IOrderExecutor
     private readonly IExchangeClient _exchange;
     private readonly AppSettings _settings;
     private readonly bool _dryRun;
+    private readonly IAlertService _alerts;
 
-    public BracketOrderExecutor(IExchangeClient exchange, AppSettings settings, BotOptions options)
+    public BracketOrderExecutor(IExchangeClient exchange, AppSettings settings, BotOptions options, IAlertService alerts)
     {
         _exchange = exchange;
         _settings = settings;
         _dryRun = options.DryRun;
+        _alerts = alerts;
     }
 
     public async Task OpenWithBracketAsync(string symbol, OrderSide side, decimal qty, decimal price, decimal stopDistance, SymbolFilters filters)
@@ -27,6 +29,7 @@ public class BracketOrderExecutor : IOrderExecutor
         if (_dryRun)
         {
             Log.Information("{Symbol}: [DRY] OPEN {Side} qty={Qty} price={Price:F2} SL={Sl:F2} TP={Tp:F2}", symbol, side, qty, price, slPrice, tpPrice);
+            await _alerts.SendAsync($"{symbol}: [DRY] OPEN {side} qty={qty} price={price:F2} SL={slPrice:F2} TP={tpPrice:F2}");
             return;
         }
 
@@ -34,6 +37,7 @@ public class BracketOrderExecutor : IOrderExecutor
         if (!entry.Success)
         {
             Log.Error("{Symbol}: entry failed qty={Qty} price={Price:F2} error={Error}", symbol, qty, price, entry.Error);
+            await _alerts.SendAsync($"{symbol}: entry failed qty={qty} price={price:F2} error={entry.Error}");
             return;
         }
 
@@ -42,6 +46,7 @@ public class BracketOrderExecutor : IOrderExecutor
         await _exchange.PlaceTakeProfitMarketCloseAsync(symbol, exitSide, tpPrice);
 
         Log.Information("{Symbol}: OPEN {Side} qty={Qty} price={Price:F2} SL={Sl:F2} TP={Tp:F2}", symbol, side, qty, price, slPrice, tpPrice);
+        await _alerts.SendAsync($"{symbol}: OPEN {side} qty={qty} price={price:F2} SL={slPrice:F2} TP={tpPrice:F2}");
     }
 
     public async Task FlipCloseAsync(string symbol, PositionSide posSide)
@@ -51,10 +56,12 @@ public class BracketOrderExecutor : IOrderExecutor
         if (_dryRun)
         {
             Log.Information("{Symbol}: flip detected — [DRY] close {Side}", symbol, sideLabel);
+            await _alerts.SendAsync($"{symbol}: [DRY] flip close {sideLabel}");
             return;
         }
 
         Log.Information("{Symbol}: flip detected — closing {Side} at market", symbol, sideLabel);
         await _exchange.ClosePositionMarketAsync(symbol, posSide);
+        await _alerts.SendAsync($"{symbol}: flip close {sideLabel}");
     }
 }

@@ -28,6 +28,18 @@ Day-trading bot for Binance USDT-M Futures. Strategy: EMA(50/200) trend filter +
 
 ## Logs
 Logs are written to the console and to rolling files in `./logs` (e.g. `logs/log-YYYYMMDD.txt`).
+
+## Telegram alerts
+Set up optional Telegram notifications for entry, SL/TP hits, flips, and errors.
+
+1. Create a Telegram bot and get the token.
+2. Export the variables:
+   ```bash
+   export TELEGRAM_TOKEN=...
+   export TELEGRAM_CHAT_ID=...
+   export TELEGRAM_ALERTS_ENABLED=1
+   ```
+   Remove `TELEGRAM_ALERTS_ENABLED` or set it to another value to disable alerts.
 ## Config (AppSettings)
 - `UseTestnet`: `true` for dry-run
 - `Leverage`: e.g. `3`

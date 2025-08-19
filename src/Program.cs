@@ -29,6 +29,21 @@ var builder = Host.CreateDefaultBuilder(args)
                 BaseAddress = new Uri(settings.BaseUrl)
             });
 
+        var alertsEnabled = Environment.GetEnvironmentVariable("TELEGRAM_ALERTS_ENABLED") == "1";
+        if (alertsEnabled)
+        {
+            var token = Environment.GetEnvironmentVariable("TELEGRAM_TOKEN");
+            var chatId = Environment.GetEnvironmentVariable("TELEGRAM_CHAT_ID");
+            if (!string.IsNullOrEmpty(token) && !string.IsNullOrEmpty(chatId))
+                services.AddSingleton<IAlertService>(new TelegramAlertService(token, chatId));
+            else
+                services.AddSingleton<IAlertService, NoopAlertService>();
+        }
+        else
+        {
+            services.AddSingleton<IAlertService, NoopAlertService>();
+        }
+
         services.AddSingleton<IExchangeClient, BinanceFuturesClient>();
         services.AddSingleton<IStrategy, EmaRsiStrategy>();
         services.AddSingleton<IRiskManager, AtrRiskManager>();
