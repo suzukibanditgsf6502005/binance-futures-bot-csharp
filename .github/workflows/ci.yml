@@ -15,6 +15,7 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
+      # Use solution for restore/build/test to avoid duplicate project commands
       - name: Restore
         run: dotnet restore BinanceBot.sln
 
@@ -22,4 +23,4 @@ jobs:
         run: dotnet build BinanceBot.sln --configuration Release --no-restore
 
       - name: Test
-        run: dotnet test BinanceBot.sln --no-build --verbosity normal
+        run: dotnet test BinanceBot.sln --configuration Release --no-build --verbosity normal
