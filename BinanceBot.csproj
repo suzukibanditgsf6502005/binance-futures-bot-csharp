@@ -7,7 +7,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Compile only source files from src/ -->
     <Compile Remove="**/*.cs" />
     <Compile Include="src/**/*.cs" />
   </ItemGroup>
