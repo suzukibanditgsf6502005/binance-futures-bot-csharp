@@ -54,6 +54,11 @@ var builder = Host.CreateDefaultBuilder(args)
 
         services.AddSingleton(sp => sp.GetRequiredService<IOptions<AppSettings>>().Value);
 
+        services.AddOptions<BinanceOptions>()
+            .Bind(context.Configuration.GetSection("Binance"))
+            .ValidateOnStart();
+        services.AddSingleton(sp => sp.GetRequiredService<IOptions<BinanceOptions>>().Value);
+
         services.AddSingleton<HttpClient>(sp =>
         {
             var settings = sp.GetRequiredService<AppSettings>();

@@ -8,5 +8,8 @@
   "AtrPercentileMin": 0,
   "AtrPercentileMax": 100,
   "Interval": "1h",
-  "Symbols": ["BTCUSDT","ETHUSDT"]
+  "Symbols": ["BTCUSDT","ETHUSDT"],
+  "Binance": {
+    "RecvWindowMs": 5000
+  }
 }
