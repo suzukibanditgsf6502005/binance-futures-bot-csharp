@@ -13,6 +13,29 @@ Log.Logger = new LoggerConfiguration()
     .WriteTo.File("logs/log-.txt", rollingInterval: RollingInterval.Day)
     .CreateLogger();
 
+if (args.Contains("--backtest"))
+{
+    var symbol = args[Array.IndexOf(args, "--backtest") + 1];
+    var from = DateTime.Parse(args[Array.IndexOf(args, "--from") + 1]);
+    var to = DateTime.Parse(args[Array.IndexOf(args, "--to") + 1]);
+    var interval = "1h";
+    var idx = Array.IndexOf(args, "--interval");
+    if (idx >= 0 && idx + 1 < args.Length)
+        interval = args[idx + 1];
+
+    var settings = new AppSettings { UseTestnet = false };
+    using var http = new HttpClient(new SocketsHttpHandler
+    {
+        AutomaticDecompression = DecompressionMethods.All
+    })
+    {
+        BaseAddress = new Uri(settings.BaseUrl)
+    };
+    var backtester = new Backtester(new EmaRsiStrategy(), settings, http);
+    await backtester.RunAsync(symbol, from, to, interval);
+    return;
+}
+
 var builder = Host.CreateDefaultBuilder(args)
     .UseSerilog()
     .ConfigureServices((context, services) =>
