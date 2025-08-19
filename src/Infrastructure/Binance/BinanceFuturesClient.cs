@@ -13,15 +13,29 @@ public class BinanceFuturesClient : IExchangeClient
     private readonly HttpClient _http;
     private readonly string _apiKey;
     private readonly string _secret;
+    private readonly BinanceOptions _options;
     private static readonly Random _jitter = new();
     private readonly IBinanceClock _clock;
 
-    public BinanceFuturesClient(HttpClient http, AppSettings settings, IBinanceClock clock)
+    public class BinanceFuturesClient : IExchangeClient
+{
+    private readonly HttpClient _http;
+    private readonly string _apiKey;
+    private readonly string _secret;
+    private readonly BinanceOptions _options;
+    private static readonly Random _jitter = new();
+
+    public BinanceFuturesClient(HttpClient http, AppSettings settings, BinanceOptions options)
     {
         _http = http;
         _apiKey = settings.ApiKey;
         _secret = settings.ApiSecret;
-        _clock = clock;
+
+        // Do NOT shadow the parameter. Keep a single source of truth:
+        _options = options ?? new BinanceOptions(settings.UseTestnet);
+
+        // Use BaseAddress; remove any _baseUrl field throughout the class.
+        _http.BaseAddress = new Uri(_options.BaseUrl);
     }
 
     public async Task<List<Kline>> GetKlinesAsync(string symbol, string interval, int limit = 500)
@@ -169,7 +183,11 @@ public class BinanceFuturesClient : IExchangeClient
     private async Task<(bool ok, string body)> SendSignedAsync(HttpMethod method, string path, Dictionary<string, string>? args = null)
     {
         args ??= new();
-        args["timestamp"] = _clock.UtcNowMsAdjusted().ToString();
+
+        var server = await GetServerTimeAsync();
+        args["timestamp"] = server.Time.ToUnixTimeMilliseconds().ToString();
+        args["recvWindow"] = _options.RecvWindowMs.ToString();
+
 
         var query = string.Join("&", args.OrderBy(k => k.Key).Select(kv => $"{kv.Key}={Uri.EscapeDataString(kv.Value)}"));
         var sig = Sign(query);

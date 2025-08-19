@@ -6,4 +6,8 @@
   "Rrr": 2.0,
   "Interval": "1h",
   "Symbols": ["BTCUSDT","ETHUSDT"]
+  ,
+  "Binance": {
+    "RecvWindowMs": 5000
+  }
 }
