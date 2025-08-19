@@ -25,6 +25,7 @@ var builder = Host.CreateDefaultBuilder(args)
         services.AddSingleton<IExchangeClient, BinanceFuturesClient>();
         services.AddSingleton<IStrategy, EmaRsiStrategy>();
         services.AddSingleton<IRiskManager, AtrRiskManager>();
+        services.AddSingleton<IOrderExecutor, BracketOrderExecutor>();
         services.AddSingleton(new BotOptions(args.Contains("--dry")));
         services.AddHostedService<BotHostedService>();
     });

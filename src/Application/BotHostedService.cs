@@ -10,18 +10,20 @@ public class BotHostedService : IHostedService
     private readonly bool _dryRun;
     private readonly IStrategy _strategy;
     private readonly IRiskManager _riskManager;
+    private readonly IOrderExecutor _orderExecutor;
     private readonly Dictionary<string, SymbolFilters> _symbolMeta = new(StringComparer.OrdinalIgnoreCase);
     private PeriodicTimer? _timer;
     private Task? _executingTask;
     private readonly CancellationTokenSource _cts = new();
 
-    public BotHostedService(IExchangeClient exchange, AppSettings settings, BotOptions options, IStrategy strategy, IRiskManager riskManager)
+    public BotHostedService(IExchangeClient exchange, AppSettings settings, BotOptions options, IStrategy strategy, IRiskManager riskManager, IOrderExecutor orderExecutor)
     {
         _exchange = exchange;
         _settings = settings;
         _dryRun = options.DryRun;
         _strategy = strategy;
         _riskManager = riskManager;
+        _orderExecutor = orderExecutor;
     }
 
     public async Task StartAsync(CancellationToken cancellationToken)
@@ -121,11 +123,11 @@ public class BotHostedService : IHostedService
         {
             if (signal == TradeSignal.Long)
             {
-                await OpenWithBracketAsync(symbol, OrderSide.Buy, qty, last.Close, stopDistance);
+                await _orderExecutor.OpenWithBracketAsync(symbol, OrderSide.Buy, qty, last.Close, stopDistance, _symbolMeta[symbol]);
             }
             else if (signal == TradeSignal.Short)
             {
-                await OpenWithBracketAsync(symbol, OrderSide.Sell, qty, last.Close, stopDistance);
+                await _orderExecutor.OpenWithBracketAsync(symbol, OrderSide.Sell, qty, last.Close, stopDistance, _symbolMeta[symbol]);
             }
             else
             {
@@ -136,56 +138,13 @@ public class BotHostedService : IHostedService
         {
             if (hasLong && signal == TradeSignal.Short)
             {
-                if (_dryRun)
-                {
-                    Console.WriteLine($"{symbol}: flip detected — [DRY] would close LONG at market");
-                }
-                else
-                {
-                    Console.WriteLine($"{symbol}: flip detected — closing LONG at market");
-                    await _exchange.ClosePositionMarketAsync(symbol, PositionSide.Long);
-                }
+                await _orderExecutor.FlipCloseAsync(symbol, PositionSide.Long);
             }
             else if (hasShort && signal == TradeSignal.Long)
             {
-                if (_dryRun)
-                {
-                    Console.WriteLine($"{symbol}: flip detected — [DRY] would close SHORT at market");
-                }
-                else
-                {
-                    Console.WriteLine($"{symbol}: flip detected — closing SHORT at market");
-                    await _exchange.ClosePositionMarketAsync(symbol, PositionSide.Short);
-                }
+                await _orderExecutor.FlipCloseAsync(symbol, PositionSide.Short);
             }
         }
-    }
-
-    private async Task OpenWithBracketAsync(string symbol, OrderSide side, decimal qty, decimal price, decimal stopDistance)
-    {
-        var slPrice = side == OrderSide.Buy ? price - stopDistance : price + stopDistance;
-        var tpPrice = side == OrderSide.Buy ? price + stopDistance * _settings.Rrr : price - stopDistance * _settings.Rrr;
-
-        slPrice = _symbolMeta[symbol].ClampPrice(slPrice);
-        tpPrice = _symbolMeta[symbol].ClampPrice(tpPrice);
-
-        if (_dryRun)
-        {
-            Console.WriteLine($"{symbol}: [DRY] OPEN {side} qty={qty} @~{price:F2} | SL={slPrice:F2} TP={tpPrice:F2}");
-            return;
-        }
-
-        var entry = await _exchange.PlaceMarketAsync(symbol, side, qty);
-        if (!entry.Success)
-        {
-            Console.WriteLine($"{symbol}: entry failed — {entry.Error}");
-            return;
-        }
-
-        await _exchange.PlaceStopMarketCloseAsync(symbol, side == OrderSide.Buy ? OrderSide.Sell : OrderSide.Buy, slPrice);
-        await _exchange.PlaceTakeProfitMarketCloseAsync(symbol, side == OrderSide.Buy ? OrderSide.Sell : OrderSide.Buy, tpPrice);
-
-        Console.WriteLine($"{symbol}: OPEN {side} qty={qty} @~{price:F2} | SL={slPrice:F2} TP={tpPrice:F2}");
     }
 
     public void Dispose()
