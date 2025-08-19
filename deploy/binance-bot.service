@@ -1,0 +1,21 @@
+[Unit]
+Description=Binance Futures Bot
+After=network.target
+
+[Service]
+# Adjust paths and user as needed
+WorkingDirectory=/opt/binance-bot
+ExecStart=/usr/bin/dotnet /opt/binance-bot/BinanceBot.dll
+Environment=BINANCE_API_KEY=REPLACE_ME
+Environment=BINANCE_API_SECRET=REPLACE_ME
+# Optional Telegram alerts
+# Environment=TELEGRAM_TOKEN=REPLACE_ME
+# Environment=TELEGRAM_CHAT_ID=REPLACE_ME
+# Environment=TELEGRAM_ALERTS_ENABLED=1
+Environment=DOTNET_ENVIRONMENT=Production
+# Logs are written to <WorkingDirectory>/logs
+Restart=always
+User=binancebot
+
+[Install]
+WantedBy=multi-user.target

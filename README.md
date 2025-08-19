@@ -96,5 +96,36 @@ Example `appsettings.Development.json`:
 - `docs/` technical docs (strategy, architecture, goals)
 - `.github/workflows/` CI
 
+## Deployment
+
+### Docker
+
+1. Copy one of the provided appsettings templates to `appsettings.Production.json` and adjust.
+2. Export environment variables:
+   - `BINANCE_API_KEY`
+   - `BINANCE_API_SECRET`
+   - *(optional)* `TELEGRAM_TOKEN`
+   - *(optional)* `TELEGRAM_CHAT_ID`
+   - *(optional)* `TELEGRAM_ALERTS_ENABLED=1`
+3. Build and run:
+   ```bash
+   docker compose up -d
+   ```
+   Logs are persisted in `./logs` on the host via a volume.
+
+The compose file also includes an optional [Seq](https://datalust.co/seq) container for structured log viewing.
+
+### systemd (Ubuntu)
+
+1. Publish the app to a folder, e.g. `/opt/binance-bot`.
+2. Edit `deploy/binance-bot.service` and set paths and environment variables.
+3. Install and start the service:
+   ```bash
+   sudo cp deploy/binance-bot.service /etc/systemd/system/
+   sudo systemctl daemon-reload
+   sudo systemctl enable --now binance-bot.service
+   ```
+   Logs are written to `<working-directory>/logs`.
+
 ## License
 Proprietary – personal use.
