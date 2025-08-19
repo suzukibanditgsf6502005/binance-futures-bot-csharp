@@ -14,12 +14,10 @@ public class BotHostedService : IHostedService
     private readonly IOrderExecutor _orderExecutor;
     private readonly Dictionary<string, SymbolFilters> _symbolMeta = new(StringComparer.OrdinalIgnoreCase);
     private readonly IAlertService _alerts;
-    private readonly Dictionary<string, TradeInfo> _trades = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, TradeState> _trades = new(StringComparer.OrdinalIgnoreCase);
     private PeriodicTimer? _timer;
     private Task? _executingTask;
     private readonly CancellationTokenSource _cts = new();
-
-    private record TradeInfo(OrderSide Side, decimal Sl, decimal Tp);
 
     public BotHostedService(IExchangeClient exchange, AppSettings settings, BotOptions options, IStrategy strategy, IRiskManager riskManager, IOrderExecutor orderExecutor, IAlertService alerts)
     {
@@ -120,19 +118,32 @@ public class BotHostedService : IHostedService
         {
             if (closed.Side == OrderSide.Buy)
             {
-                if (last.Close <= closed.Sl)
+                if (last.Close <= closed.Stop)
                     await _alerts.SendAsync($"{symbol}: SL hit at {last.Close:F2}");
                 else if (last.Close >= closed.Tp)
                     await _alerts.SendAsync($"{symbol}: TP hit at {last.Close:F2}");
             }
             else
             {
-                if (last.Close >= closed.Sl)
+                if (last.Close >= closed.Stop)
                     await _alerts.SendAsync($"{symbol}: SL hit at {last.Close:F2}");
                 else if (last.Close <= closed.Tp)
                     await _alerts.SendAsync($"{symbol}: TP hit at {last.Close:F2}");
             }
             _trades.Remove(symbol);
+        }
+
+        if ((hasLong || hasShort) && _trades.TryGetValue(symbol, out var active))
+        {
+            var changed = active.Update(last.Close, lastAtr, _settings.BreakEvenAtRr, _settings.AtrTrailMultiple, _symbolMeta[symbol]);
+            if (changed)
+            {
+                var exitSide = active.Side == OrderSide.Buy ? OrderSide.Sell : OrderSide.Buy;
+                if (!_dryRun)
+                    await _exchange.PlaceStopMarketCloseAsync(symbol, exitSide, active.Stop);
+                Log.Information("{Symbol}: SL updated to {Sl:F2}", symbol, active.Stop);
+                await _alerts.SendAsync($"{symbol}: SL updated to {active.Stop:F2}");
+            }
         }
 
         var account = await _exchange.GetAccountBalanceAsync();
@@ -153,14 +164,14 @@ public class BotHostedService : IHostedService
                 await _orderExecutor.OpenWithBracketAsync(symbol, OrderSide.Buy, qty, last.Close, stopDistance, _symbolMeta[symbol]);
                 var sl = _symbolMeta[symbol].ClampPrice(last.Close - stopDistance);
                 var tp = _symbolMeta[symbol].ClampPrice(last.Close + stopDistance * _settings.Rrr);
-                _trades[symbol] = new TradeInfo(OrderSide.Buy, sl, tp);
+                _trades[symbol] = new TradeState(OrderSide.Buy, last.Close, sl, tp);
             }
             else if (signal == TradeSignal.Short)
             {
                 await _orderExecutor.OpenWithBracketAsync(symbol, OrderSide.Sell, qty, last.Close, stopDistance, _symbolMeta[symbol]);
                 var sl = _symbolMeta[symbol].ClampPrice(last.Close + stopDistance);
                 var tp = _symbolMeta[symbol].ClampPrice(last.Close - stopDistance * _settings.Rrr);
-                _trades[symbol] = new TradeInfo(OrderSide.Sell, sl, tp);
+                _trades[symbol] = new TradeState(OrderSide.Sell, last.Close, sl, tp);
             }
             else
             {
