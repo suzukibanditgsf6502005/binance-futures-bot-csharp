@@ -19,6 +19,7 @@ public class BinanceFuturesClient : IExchangeClient
     public BinanceFuturesClient(HttpClient http, AppSettings settings, BinanceOptions options)
     {
         _http = http;
+        _http.BaseAddress = new Uri(options.BaseUrl);
         _apiKey = settings.ApiKey;
         _secret = settings.ApiSecret;
         _options = options;

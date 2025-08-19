@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
 using Application;
 using Infrastructure.Binance;
@@ -56,6 +57,7 @@ var builder = Host.CreateDefaultBuilder(args)
 
         services.AddOptions<BinanceOptions>()
             .Bind(context.Configuration.GetSection("Binance"))
+            .PostConfigure(o => o.UseTestnet = context.Configuration.GetValue<bool>("UseTestnet"))
             .ValidateOnStart();
         services.AddSingleton(sp => sp.GetRequiredService<IOptions<BinanceOptions>>().Value);
 
