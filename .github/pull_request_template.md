@@ -1,5 +1,5 @@
 ## Summary
-- 
+-
 
 ## Testing
 - [ ] `dotnet test`
