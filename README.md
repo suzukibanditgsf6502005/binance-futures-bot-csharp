@@ -6,6 +6,7 @@ Day-trading bot for Binance USDT-M Futures. Strategy: EMA(50/200) trend filter +
 - Trend filter: EMA50 vs EMA200
 - RSI(14) pullback validation
 - ATR(14) position sizing: SL = ATR * 1.5 (configurable), TP = SL * 2 (RRR 1:2)
+- Break-even at RR≥1 then ATR-based trailing stop (configurable)
 - Per-symbol exchange filters (tickSize, stepSize, minNotional)
 - Leverage setting per symbol on start
 - Testnet-first (safe dry-run), flip to live later
@@ -46,6 +47,8 @@ Set up optional Telegram notifications for entry, SL/TP hits, flips, and errors.
 - `RiskPerTradePct`: e.g. `0.01` (1% risk)
 - `AtrMultiple`: e.g. `1.5`
 - `Rrr`: e.g. `2.0`
+- `BreakEvenAtRr`: e.g. `1.0`
+- `AtrTrailMultiple`: e.g. `1.0`
 - `Interval`: `1h` (day trading)
 - `Symbols`: `["BTCUSDT","ETHUSDT"]`
 

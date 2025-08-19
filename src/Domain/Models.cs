@@ -8,6 +8,8 @@ public record AppSettings(
     decimal RiskPerTradePct,
     decimal AtrMultiple,
     decimal Rrr,
+    decimal BreakEvenAtRr,
+    decimal AtrTrailMultiple,
     string Interval,
     string[] Symbols)
 {
@@ -24,6 +26,8 @@ public record AppSettings(
             RiskPerTradePct: 0.01m,
             AtrMultiple: 1.5m,
             Rrr: 2.0m,
+            BreakEvenAtRr: 1.0m,
+            AtrTrailMultiple: 1.0m,
             Interval: "1h",
             Symbols: new[] { "BTCUSDT", "ETHUSDT" }
         );
@@ -80,6 +84,57 @@ public static class TradeMath
         var risk = balance * riskPct;
         var stopDistance = Math.Max(atr * atrMultiple, 0.001m);
         return (risk / stopDistance) * leverage / price;
+    }
+}
+
+public class TradeState
+{
+    public OrderSide Side { get; }
+    public decimal Entry { get; }
+    public decimal Stop { get; private set; }
+    public decimal Tp { get; }
+    public decimal InitialRisk { get; }
+    public bool BreakEvenActive { get; private set; }
+
+    public TradeState(OrderSide side, decimal entry, decimal stop, decimal tp)
+    {
+        Side = side;
+        Entry = entry;
+        Stop = stop;
+        Tp = tp;
+        InitialRisk = Math.Abs(entry - stop);
+    }
+
+    public bool Update(decimal close, decimal atr, decimal breakEvenAtRr, decimal atrTrailMultiple, SymbolFilters filters)
+    {
+        var oldStop = Stop;
+        var beTriggered = false;
+
+        if (!BreakEvenActive)
+        {
+            var rr = Side == OrderSide.Buy ? (close - Entry) / InitialRisk : (Entry - close) / InitialRisk;
+            if (rr >= breakEvenAtRr)
+            {
+                Stop = filters.ClampPrice(Entry);
+                BreakEvenActive = true;
+                beTriggered = true;
+            }
+        }
+
+        if (BreakEvenActive && !beTriggered)
+        {
+            var candidate = Side == OrderSide.Buy
+                ? close - atr * atrTrailMultiple
+                : close + atr * atrTrailMultiple;
+            candidate = filters.ClampPrice(candidate);
+
+            if (Side == OrderSide.Buy)
+                Stop = Math.Max(Stop, candidate);
+            else
+                Stop = Math.Min(Stop, candidate);
+        }
+
+        return Stop != oldStop;
     }
 }
 
