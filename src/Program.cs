@@ -14,6 +14,7 @@ using System.Text.Json.Serialization;
 using Skender.Stock.Indicators; // indicators
 
 var settings = AppSettings.Load();
+bool dryRun = args.Contains("--dry");
 var http = new HttpClient(new SocketsHttpHandler
 {
     PooledConnectionLifetime = TimeSpan.FromMinutes(15),
@@ -26,6 +27,8 @@ var http = new HttpClient(new SocketsHttpHandler
 var binance = new BinanceFuturesClient(http, settings.ApiKey, settings.ApiSecret, settings.UseTestnet);
 
 Console.WriteLine($"Binance Futures bot starting (Testnet={settings.UseTestnet}) @ {DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss}");
+if (dryRun)
+    Console.WriteLine("Dry-run mode: orders will not be placed.");
 
 // Preload exchange filters per symbol for rounding
 var symbolMeta = new Dictionary<string, SymbolFilters>(StringComparer.OrdinalIgnoreCase);
@@ -121,7 +124,7 @@ async Task RunSymbolAsync(string symbol)
     var stopDistance = Math.Max(lastAtr * settings.AtrMultiple, 0.001m);
 
     // quantity in contract terms (USDT notionals): qty = (risk / stop) * leverage / price
-    var rawQty = (riskPerTrade / stopDistance) * settings.Leverage / last.Close;
+    var rawQty = TradeMath.CalculatePositionQuantity(usdtBalance, settings.RiskPerTradePct, lastAtr, settings.AtrMultiple, last.Close, settings.Leverage);
 
     var filters = symbolMeta[symbol];
     var qty = filters.ClampQuantity(rawQty);
@@ -153,32 +156,52 @@ async Task RunSymbolAsync(string symbol)
         // Optional: if signal flips hard, flatten at market
         if (hasLong && shortSignal)
         {
-            Console.WriteLine($"{symbol}: flip detected — closing LONG at market");
-            await binance.ClosePositionMarketAsync(symbol, PositionSide.Long);
+            if (dryRun)
+            {
+                Console.WriteLine($"{symbol}: flip detected — [DRY] would close LONG at market");
+            }
+            else
+            {
+                Console.WriteLine($"{symbol}: flip detected — closing LONG at market");
+                await binance.ClosePositionMarketAsync(symbol, PositionSide.Long);
+            }
         }
         else if (hasShort && longSignal)
         {
-            Console.WriteLine($"{symbol}: flip detected — closing SHORT at market");
-            await binance.ClosePositionMarketAsync(symbol, PositionSide.Short);
+            if (dryRun)
+            {
+                Console.WriteLine($"{symbol}: flip detected — [DRY] would close SHORT at market");
+            }
+            else
+            {
+                Console.WriteLine($"{symbol}: flip detected — closing SHORT at market");
+                await binance.ClosePositionMarketAsync(symbol, PositionSide.Short);
+            }
         }
     }
 }
 
 async Task OpenWithBracketAsync(string symbol, OrderSide side, decimal qty, decimal price, decimal stopDistance)
 {
-    var entry = await binance.PlaceMarketAsync(symbol, side, qty);
-    if (!entry.Success)
-    {
-        Console.WriteLine($"{symbol}: entry failed — {entry.Error}");
-        return;
-    }
-
     // place SL and TP as reduce-only market triggers (closePosition=true)
     var slPrice = side == OrderSide.Buy ? price - stopDistance : price + stopDistance;
     var tpPrice = side == OrderSide.Buy ? price + stopDistance * settings.Rrr : price - stopDistance * settings.Rrr;
 
     slPrice = symbolMeta[symbol].ClampPrice(slPrice);
     tpPrice = symbolMeta[symbol].ClampPrice(tpPrice);
+
+    if (dryRun)
+    {
+        Console.WriteLine($"{symbol}: [DRY] OPEN {side} qty={qty} @~{price:F2} | SL={slPrice:F2} TP={tpPrice:F2}");
+        return;
+    }
+
+    var entry = await binance.PlaceMarketAsync(symbol, side, qty);
+    if (!entry.Success)
+    {
+        Console.WriteLine($"{symbol}: entry failed — {entry.Error}");
+        return;
+    }
 
     await binance.PlaceStopMarketCloseAsync(symbol, side == OrderSide.Buy ? OrderSide.Sell : OrderSide.Buy, slPrice);
     await binance.PlaceTakeProfitMarketCloseAsync(symbol, side == OrderSide.Buy ? OrderSide.Sell : OrderSide.Buy, tpPrice);
@@ -478,7 +501,17 @@ enum PositionSide
     Short
 }
 
-record SymbolFilters(decimal StepSize, decimal TickSize, decimal MinNotional)
+public static class TradeMath
+{
+    public static decimal CalculatePositionQuantity(decimal balance, decimal riskPct, decimal atr, decimal atrMultiple, decimal price, int leverage)
+    {
+        var risk = balance * riskPct;
+        var stopDistance = Math.Max(atr * atrMultiple, 0.001m);
+        return (risk / stopDistance) * leverage / price;
+    }
+}
+
+public record SymbolFilters(decimal StepSize, decimal TickSize, decimal MinNotional)
 {
     public decimal ClampQuantity(decimal qty)
     {
