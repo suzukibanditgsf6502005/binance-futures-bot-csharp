@@ -13,13 +13,18 @@ public class BinanceFuturesClient : IExchangeClient
     private readonly HttpClient _http;
     private readonly string _apiKey;
     private readonly string _secret;
+    private readonly string _baseUrl;
     private static readonly Random _jitter = new();
 
     public BinanceFuturesClient(HttpClient http, AppSettings settings)
     {
+        var options = new BinanceOptions(settings.UseTestnet);
+
         _http = http;
+        _http.BaseAddress = new Uri(options.BaseUrl);
         _apiKey = settings.ApiKey;
         _secret = settings.ApiSecret;
+        _baseUrl = options.BaseUrl;
     }
 
     public async Task<List<Kline>> GetKlinesAsync(string symbol, string interval, int limit = 500)
