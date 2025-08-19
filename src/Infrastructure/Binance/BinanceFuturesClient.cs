@@ -14,12 +14,14 @@ public class BinanceFuturesClient : IExchangeClient
     private readonly string _apiKey;
     private readonly string _secret;
     private static readonly Random _jitter = new();
+    private readonly IBinanceClock _clock;
 
-    public BinanceFuturesClient(HttpClient http, AppSettings settings)
+    public BinanceFuturesClient(HttpClient http, AppSettings settings, IBinanceClock clock)
     {
         _http = http;
         _apiKey = settings.ApiKey;
         _secret = settings.ApiSecret;
+        _clock = clock;
     }
 
     public async Task<List<Kline>> GetKlinesAsync(string symbol, string interval, int limit = 500)
@@ -167,8 +169,7 @@ public class BinanceFuturesClient : IExchangeClient
     private async Task<(bool ok, string body)> SendSignedAsync(HttpMethod method, string path, Dictionary<string, string>? args = null)
     {
         args ??= new();
-        var server = await GetServerTimeAsync();
-        args["timestamp"] = server.Time.ToUnixTimeMilliseconds().ToString();
+        args["timestamp"] = _clock.UtcNowMsAdjusted().ToString();
 
         var query = string.Join("&", args.OrderBy(k => k.Key).Select(kv => $"{kv.Key}={Uri.EscapeDataString(kv.Value)}"));
         var sig = Sign(query);

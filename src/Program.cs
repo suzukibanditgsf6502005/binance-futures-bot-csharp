@@ -82,6 +82,7 @@ var builder = Host.CreateDefaultBuilder(args)
             services.AddSingleton<IAlertService, NoopAlertService>();
         }
 
+        services.AddSingleton<IBinanceClock, SystemClock>();
         services.AddSingleton<IExchangeClient, BinanceFuturesClient>();
         services.AddSingleton<IStrategy, EmaRsiStrategy>();
         services.AddSingleton<IRiskManager, AtrRiskManager>();
