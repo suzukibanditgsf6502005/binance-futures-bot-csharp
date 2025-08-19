@@ -15,6 +15,15 @@ public class BinanceFuturesClient : IExchangeClient
     private readonly string _secret;
     private readonly BinanceOptions _options;
     private static readonly Random _jitter = new();
+    private readonly IBinanceClock _clock;
+
+    public class BinanceFuturesClient : IExchangeClient
+{
+    private readonly HttpClient _http;
+    private readonly string _apiKey;
+    private readonly string _secret;
+    private readonly BinanceOptions _options;
+    private static readonly Random _jitter = new();
 
     public BinanceFuturesClient(HttpClient http, AppSettings settings, BinanceOptions options)
     {
@@ -174,9 +183,11 @@ public class BinanceFuturesClient : IExchangeClient
     private async Task<(bool ok, string body)> SendSignedAsync(HttpMethod method, string path, Dictionary<string, string>? args = null)
     {
         args ??= new();
+
         var server = await GetServerTimeAsync();
         args["timestamp"] = server.Time.ToUnixTimeMilliseconds().ToString();
         args["recvWindow"] = _options.RecvWindowMs.ToString();
+
 
         var query = string.Join("&", args.OrderBy(k => k.Key).Select(kv => $"{kv.Key}={Uri.EscapeDataString(kv.Value)}"));
         var sig = Sign(query);
