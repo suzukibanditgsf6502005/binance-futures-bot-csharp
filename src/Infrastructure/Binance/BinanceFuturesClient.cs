@@ -144,8 +144,31 @@ public class BinanceFuturesClient : IExchangeClient
 
     public async Task<PositionRisk> GetPositionRiskAsync(string symbol)
     {
-        var (ok, body) = await SendSignedAsync(HttpMethod.Get, "/fapi/v2/positionRisk", new Dictionary<string, string> { ["symbol"] = symbol.ToUpper() });
-        if (!ok) throw new Exception(body);
+        const string path = "/fapi/v2/positionRisk";
+        var nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var recvWindow = _options.RecvWindowMs;
+
+        var dict = new SortedDictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["timestamp"] = nowMs.ToString(CultureInfo.InvariantCulture),
+            ["recvWindow"] = recvWindow.ToString(CultureInfo.InvariantCulture),
+            ["symbol"] = symbol.ToUpperInvariant()
+        };
+
+        string Encode(string s) => Uri.EscapeDataString(s);
+        var encodedQuery = string.Join("&", dict.Select(kv => $"{kv.Key}={Encode(kv.Value)}"));
+
+        var signature = _signer.SignToHex(encodedQuery);
+        var finalQuery = $"{encodedQuery}&signature={signature}";
+
+        using var req = new HttpRequestMessage(HttpMethod.Get, path + "?" + finalQuery);
+        req.Headers.TryAddWithoutValidation("X-MBX-APIKEY", _apiKey);
+
+        var resp = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead);
+        var body = await resp.Content.ReadAsStringAsync();
+        if (!resp.IsSuccessStatusCode)
+            throw new Exception(body);
+
         var arr = JsonSerializer.Deserialize<List<PositionRisk>>(body)!;
         return arr[0];
     }
