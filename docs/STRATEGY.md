@@ -29,6 +29,8 @@
 ## Ops Rules
 - Only one open position per symbol; flip = close current, then consider opposite
 - No trading on unclosed candle
+- Skip new entries within configurable minutes around funding times (00:00/08:00/16:00 UTC)
+- Gate entries by ATR percentile range
 - Testnet first, min. 2 weeks
 
 ## Future Enhancements

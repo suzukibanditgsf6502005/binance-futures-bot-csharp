@@ -1,36 +1,39 @@
 using System.Text.Json.Serialization;
+using Microsoft.Extensions.Configuration;
 
-public record AppSettings(
-    string ApiKey,
-    string ApiSecret,
-    bool UseTestnet,
-    int Leverage,
-    decimal RiskPerTradePct,
-    decimal AtrMultiple,
-    decimal Rrr,
-    decimal BreakEvenAtRr,
-    decimal AtrTrailMultiple,
-    string Interval,
-    string[] Symbols)
+public record AppSettings
 {
+    public string ApiKey { get; init; } = Environment.GetEnvironmentVariable("BINANCE_API_KEY") ?? "YOUR_TESTNET_API_KEY";
+    public string ApiSecret { get; init; } = Environment.GetEnvironmentVariable("BINANCE_API_SECRET") ?? "YOUR_TESTNET_SECRET";
+    public bool UseTestnet { get; init; } = true;
+    public int Leverage { get; init; } = 3;
+    public decimal RiskPerTradePct { get; init; } = 0.01m;
+    public decimal AtrMultiple { get; init; } = 1.5m;
+    public decimal Rrr { get; init; } = 2.0m;
+    public decimal BreakEvenAtRr { get; init; } = 1.0m;
+    public decimal AtrTrailMultiple { get; init; } = 1.0m;
+    public string Interval { get; init; } = "1h";
+    public string[] Symbols { get; init; } = new[] { "BTCUSDT", "ETHUSDT" };
+    public int FundingBlackoutMinutes { get; init; } = 10;
+    public decimal AtrPercentileMin { get; init; } = 0m;
+    public decimal AtrPercentileMax { get; init; } = 100m;
+
     [JsonIgnore]
     public string BaseUrl => UseTestnet ? "https://testnet.binancefuture.com" : "https://fapi.binance.com";
 
-    public static AppSettings Load()
+    public static AppSettings Load(IConfiguration? config = null)
     {
-        return new AppSettings(
-            ApiKey: Environment.GetEnvironmentVariable("BINANCE_API_KEY") ?? "YOUR_TESTNET_API_KEY",
-            ApiSecret: Environment.GetEnvironmentVariable("BINANCE_API_SECRET") ?? "YOUR_TESTNET_SECRET",
-            UseTestnet: true,
-            Leverage: 3,
-            RiskPerTradePct: 0.01m,
-            AtrMultiple: 1.5m,
-            Rrr: 2.0m,
-            BreakEvenAtRr: 1.0m,
-            AtrTrailMultiple: 1.0m,
-            Interval: "1h",
-            Symbols: new[] { "BTCUSDT", "ETHUSDT" }
-        );
+        var settings = config?.Get<AppSettings>() ?? new AppSettings();
+
+        var apiKey = Environment.GetEnvironmentVariable("BINANCE_API_KEY");
+        var apiSecret = Environment.GetEnvironmentVariable("BINANCE_API_SECRET");
+
+        if (!string.IsNullOrWhiteSpace(apiKey))
+            settings = settings with { ApiKey = apiKey };
+        if (!string.IsNullOrWhiteSpace(apiSecret))
+            settings = settings with { ApiSecret = apiSecret };
+
+        return settings;
     }
 }
 
