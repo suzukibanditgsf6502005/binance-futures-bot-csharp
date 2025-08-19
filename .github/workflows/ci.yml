@@ -14,10 +14,12 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
+
       - name: Restore
-        run: dotnet restore
+        run: dotnet restore BinanceBot.sln
+
       - name: Build
-        run: dotnet build --configuration Release --no-restore
+        run: dotnet build BinanceBot.sln --configuration Release --no-restore
+
       - name: Test
-        run: |
-          if [ -d "tests" ]; then dotnet test --no-build --verbosity normal; else echo "No tests yet"; fi
+        run: dotnet test BinanceBot.sln --no-build --verbosity normal
