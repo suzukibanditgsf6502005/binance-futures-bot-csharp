@@ -1,6 +1,7 @@
 # Binance Futures Bot (C#/.NET 8)
 
-Day-trading bot for Binance USDT-M Futures. Strategy: EMA(50/200) trend filter + RSI(14) pullback + ATR(14) based risk. Bracket orders with SL/TP, fixed risk per trade, and symbol filters.
+Day-trading bot for Binance USDT-M Futures. Strategy: EMA(50/200) trend filter + RSI(14) pullback + ATR(14) based risk. Bracket
+orders with SL/TP, fixed risk per trade, and symbol filters.
 
 ## Features
 - Trend filter: EMA50 vs EMA200
@@ -13,7 +14,7 @@ Day-trading bot for Binance USDT-M Futures. Strategy: EMA(50/200) trend filter +
 
 ## Quick start
 1. Install the .NET 8 SDK.
-2. Export Testnet API keys:
+2. Export **Testnet** API keys:
    ```bash
    export BINANCE_API_KEY=...
    export BINANCE_API_SECRET=...
@@ -41,6 +42,7 @@ Set up optional Telegram notifications for entry, SL/TP hits, flips, and errors.
    export TELEGRAM_ALERTS_ENABLED=1
    ```
    Remove `TELEGRAM_ALERTS_ENABLED` or set it to another value to disable alerts.
+
 ## Configuration
 
 Settings are bound using the Options pattern. Non-secret values come from
@@ -70,9 +72,6 @@ Example `appsettings.Development.json`:
   "RiskPerTradePct": 0.01,
   "AtrMultiple": 1.5,
   "Rrr": 2.0,
-  "FundingBlackoutMinutes": 10,
-  "AtrPercentileMin": 0,
-  "AtrPercentileMax": 100,
   "Interval": "1h",
   "Symbols": ["BTCUSDT","ETHUSDT"]
 }
@@ -84,8 +83,6 @@ Example `appsettings.Development.json`:
 - `RiskPerTradePct`: e.g. `0.01` (1% risk)
 - `AtrMultiple`: e.g. `1.5`
 - `Rrr`: e.g. `2.0`
-- `BreakEvenAtRr`: e.g. `1.0`
-- `AtrTrailMultiple`: e.g. `1.0`
 - `Interval`: `1h` (day trading)
 - `Symbols`: `["BTCUSDT","ETHUSDT"]`
 
