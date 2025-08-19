@@ -8,16 +8,20 @@ public class BotHostedService : IHostedService
     private readonly IExchangeClient _exchange;
     private readonly AppSettings _settings;
     private readonly bool _dryRun;
+    private readonly IStrategy _strategy;
+    private readonly IRiskManager _riskManager;
     private readonly Dictionary<string, SymbolFilters> _symbolMeta = new(StringComparer.OrdinalIgnoreCase);
     private PeriodicTimer? _timer;
     private Task? _executingTask;
     private readonly CancellationTokenSource _cts = new();
 
-    public BotHostedService(IExchangeClient exchange, AppSettings settings, BotOptions options)
+    public BotHostedService(IExchangeClient exchange, AppSettings settings, BotOptions options, IStrategy strategy, IRiskManager riskManager)
     {
         _exchange = exchange;
         _settings = settings;
         _dryRun = options.DryRun;
+        _strategy = strategy;
+        _riskManager = riskManager;
     }
 
     public async Task StartAsync(CancellationToken cancellationToken)
@@ -91,39 +95,21 @@ public class BotHostedService : IHostedService
             Volume = k.Volume
         });
 
-        var ema50 = quotes.GetEma(50).ToList();
-        var ema200 = quotes.GetEma(200).ToList();
-        var rsi = quotes.GetRsi(14).ToList();
         var atr = quotes.GetAtr(14).ToList();
-
-        if (ema50.Count < 5 || ema200.Count < 5 || rsi.Count < 5) return;
+        if (atr.Count < 5) return;
 
         var last = klines[^1];
-        var lastEma50 = (decimal)(ema50[^1].Ema ?? 0d);
-        var lastEma200 = (decimal)(ema200[^1].Ema ?? 0d);
-        var lastRsi = (decimal)(rsi[^1].Rsi ?? 50d);
         var lastAtr = (decimal)(atr[^1].Atr ?? 0d);
-
-        var trendUp = lastEma50 > lastEma200;
-        var trendDown = lastEma50 < lastEma200;
-
-        bool longSignal = trendUp && lastRsi > 45m && last.Close > lastEma50;
-        bool shortSignal = trendDown && lastRsi < 55m && last.Close < lastEma50;
+        var signal = _strategy.Evaluate(quotes);
 
         var pos = await _exchange.GetPositionRiskAsync(symbol);
         var hasLong = pos.PositionAmt > 0m;
         var hasShort = pos.PositionAmt < 0m;
 
         var account = await _exchange.GetAccountBalanceAsync();
-        var usdtBalance = account.AvailableBalance;
-        var riskPerTrade = _settings.RiskPerTradePct * usdtBalance;
-        if (riskPerTrade <= 0) return;
+        var qty = _riskManager.CalculateQty(account.AvailableBalance, lastAtr, last.Close, _settings, _symbolMeta[symbol]);
+        var riskPerTrade = _settings.RiskPerTradePct * account.AvailableBalance;
         var stopDistance = Math.Max(lastAtr * _settings.AtrMultiple, 0.001m);
-
-        var rawQty = TradeMath.CalculatePositionQuantity(usdtBalance, _settings.RiskPerTradePct, lastAtr, _settings.AtrMultiple, last.Close, _settings.Leverage);
-
-        var filters = _symbolMeta[symbol];
-        var qty = filters.ClampQuantity(rawQty);
 
         if (qty <= 0m)
         {
@@ -133,11 +119,11 @@ public class BotHostedService : IHostedService
 
         if (!hasLong && !hasShort)
         {
-            if (longSignal)
+            if (signal == TradeSignal.Long)
             {
                 await OpenWithBracketAsync(symbol, OrderSide.Buy, qty, last.Close, stopDistance);
             }
-            else if (shortSignal)
+            else if (signal == TradeSignal.Short)
             {
                 await OpenWithBracketAsync(symbol, OrderSide.Sell, qty, last.Close, stopDistance);
             }
@@ -148,7 +134,7 @@ public class BotHostedService : IHostedService
         }
         else
         {
-            if (hasLong && shortSignal)
+            if (hasLong && signal == TradeSignal.Short)
             {
                 if (_dryRun)
                 {
@@ -160,7 +146,7 @@ public class BotHostedService : IHostedService
                     await _exchange.ClosePositionMarketAsync(symbol, PositionSide.Long);
                 }
             }
-            else if (hasShort && longSignal)
+            else if (hasShort && signal == TradeSignal.Long)
             {
                 if (_dryRun)
                 {
