@@ -1,7 +1,5 @@
 using System.Globalization;
 using System.Net.Http;
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 using Application;
 using Serilog;
@@ -12,24 +10,15 @@ public class BinanceFuturesClient : IExchangeClient
 {
     private readonly HttpClient _http;
     private readonly string _apiKey;
-    private readonly string _secret;
     private readonly BinanceOptions _options;
     private static readonly Random _jitter = new();
-    private readonly IBinanceClock _clock;
+    private readonly Signer _signer;
 
-    public class BinanceFuturesClient : IExchangeClient
-{
-    private readonly HttpClient _http;
-    private readonly string _apiKey;
-    private readonly string _secret;
-    private readonly BinanceOptions _options;
-    private static readonly Random _jitter = new();
-
-    public BinanceFuturesClient(HttpClient http, AppSettings settings, BinanceOptions options)
+    public BinanceFuturesClient(HttpClient http, AppSettings settings, BinanceOptions options, Signer signer)
     {
         _http = http;
         _apiKey = settings.ApiKey;
-        _secret = settings.ApiSecret;
+        _signer = signer;
 
         // Do NOT shadow the parameter. Keep a single source of truth:
         _options = options ?? new BinanceOptions(settings.UseTestnet);
@@ -188,9 +177,8 @@ public class BinanceFuturesClient : IExchangeClient
         args["timestamp"] = server.Time.ToUnixTimeMilliseconds().ToString();
         args["recvWindow"] = _options.RecvWindowMs.ToString();
 
-
         var query = string.Join("&", args.OrderBy(k => k.Key).Select(kv => $"{kv.Key}={Uri.EscapeDataString(kv.Value)}"));
-        var sig = Sign(query);
+        var sig = _signer.SignToHex(query);
         var requestUri = path + "?" + query + "&signature=" + sig;
 
         var req = new HttpRequestMessage(method, requestUri);
@@ -208,28 +196,6 @@ public class BinanceFuturesClient : IExchangeClient
         var doc = JsonDocument.Parse(json);
         var ms = doc.RootElement.GetProperty("serverTime").GetInt64();
         return new ServerTime(DateTimeOffset.FromUnixTimeMilliseconds(ms));
-    }
-
-    private static string ToHex(ReadOnlySpan<byte> bytes)
-    {
-        var c = new char[bytes.Length * 2];
-        int b;
-        for (int i = 0; i < bytes.Length; i++)
-        {
-            b = bytes[i] >> 4;
-            c[i * 2] = (char)(55 + b + (((b - 10) >> 31) & -7));
-            b = bytes[i] & 0xF;
-            c[i * 2 + 1] = (char)(55 + b + (((b - 10) >> 31) & -7));
-        }
-
-        return new string(c);
-    }
-
-    private string Sign(string payload)
-    {
-        using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(_secret));
-        var hash = hmac.ComputeHash(Encoding.UTF8.GetBytes(payload));
-        return ToHex(hash).ToLowerInvariant();
     }
 
     private static bool ShouldRetry(HttpResponseMessage response)
@@ -257,3 +223,4 @@ public class BinanceFuturesClient : IExchangeClient
         throw new InvalidOperationException("Retry logic failure");
     }
 }
+

@@ -57,9 +57,15 @@ var builder = Host.CreateDefaultBuilder(args)
 
         services.AddOptions<BinanceOptions>()
             .Bind(context.Configuration.GetSection("Binance"))
-            .PostConfigure(o => o.UseTestnet = context.Configuration.GetValue<bool>("UseTestnet"))
             .ValidateOnStart();
-        services.AddSingleton(sp => sp.GetRequiredService<IOptions<BinanceOptions>>().Value);
+        services.AddSingleton(sp =>
+        {
+            var o = sp.GetRequiredService<IOptions<BinanceOptions>>().Value;
+            return new BinanceOptions(context.Configuration.GetValue<bool>("UseTestnet"))
+            {
+                RecvWindowMs = o.RecvWindowMs
+            };
+        });
 
         services.AddSingleton<HttpClient>(sp =>
         {
@@ -90,6 +96,7 @@ var builder = Host.CreateDefaultBuilder(args)
         }
 
         services.AddSingleton<IBinanceClock, SystemClock>();
+        services.AddSingleton(sp => new Signer(sp.GetRequiredService<AppSettings>().ApiSecret));
         services.AddSingleton<IExchangeClient, BinanceFuturesClient>();
         services.AddSingleton<IStrategy, EmaRsiStrategy>();
         services.AddSingleton<IRiskManager, AtrRiskManager>();
