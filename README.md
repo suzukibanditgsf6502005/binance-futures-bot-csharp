@@ -11,18 +11,20 @@ Day-trading bot for Binance USDT-M Futures. Strategy: EMA(50/200) trend filter +
 - Testnet-first (safe dry-run), flip to live later
 
 ## Quick start
-1. **.NET 8 SDK** installed.
-2. Set environment variables (Testnet keys):
-   - `BINANCE_API_KEY`, `BINANCE_API_SECRET`
-3. Install indicators:
+1. Install the .NET 8 SDK.
+2. Export Testnet API keys:
    ```bash
-   dotnet add package Skender.Stock.Indicators
+   export BINANCE_API_KEY=...
+   export BINANCE_API_SECRET=...
    ```
-4. Run:
+3. Build the solution:
    ```bash
-   dotnet run
+   dotnet build BinanceBot.sln
    ```
-
+4. Run in dry mode:
+   ```bash
+   dotnet run --project BinanceBot.csproj -- --dry
+   ```
 ## Config (AppSettings)
 - `UseTestnet`: `true` for dry-run
 - `Leverage`: e.g. `3`

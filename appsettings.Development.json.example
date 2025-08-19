@@ -1,0 +1,9 @@
+{
+  "UseTestnet": true,
+  "Leverage": 3,
+  "RiskPerTradePct": 0.01,
+  "AtrMultiple": 1.5,
+  "Rrr": 2.0,
+  "Interval": "1h",
+  "Symbols": ["BTCUSDT","ETHUSDT"]
+}
