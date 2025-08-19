@@ -375,7 +375,7 @@ class BinanceFuturesClient
         args ??= new();
         // timestamp with small server-time sync
         var server = await GetServerTimeAsync();
-        args["timestamp"] = server.ServerTime.ToUnixTimeMilliseconds().ToString();
+        args["timestamp"] = server.Time.ToUnixTimeMilliseconds().ToString();
 
         var query = string.Join("&", args.OrderBy(k => k.Key).Select(kv => $"{kv.Key}={Uri.EscapeDataString(kv.Value)}"));
         var sig = Sign(query);
@@ -412,7 +412,10 @@ class BinanceFuturesClient
 
 // ============ domain models ============
 
-record ServerTime(DateTimeOffset ServerTime);
+// Fix: property name cannot be the same as the type name.
+// Was: record ServerTime(DateTimeOffset ServerTime);
+// Now: record ServerTime(DateTimeOffset Time);
+record ServerTime(DateTimeOffset Time);
 
 record Kline
 {
