@@ -1,15 +1,15 @@
 namespace Infrastructure.Binance;
 
-public class BinanceOptions
+public sealed class BinanceOptions
 {
-    public bool UseTestnet { get; }
-    public string BaseUrl { get; }
-
     public BinanceOptions(bool useTestnet)
     {
         UseTestnet = useTestnet;
-        BaseUrl = useTestnet
-            ? "https://testnet.binancefuture.com"
-            : "https://fapi.binance.com";
     }
+
+    public bool UseTestnet { get; }
+    public string BaseUrl => UseTestnet ? "https://testnet.binancefuture.com" : "https://fapi.binance.com";
+
+    // New: recvWindow support (default 5000 ms)
+    public int RecvWindowMs { get; set; } = 5000;
 }

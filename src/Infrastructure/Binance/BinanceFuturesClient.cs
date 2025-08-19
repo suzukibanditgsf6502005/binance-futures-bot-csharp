@@ -13,18 +13,20 @@ public class BinanceFuturesClient : IExchangeClient
     private readonly HttpClient _http;
     private readonly string _apiKey;
     private readonly string _secret;
-    private readonly string _baseUrl;
+    private readonly BinanceOptions _options;
     private static readonly Random _jitter = new();
 
-    public BinanceFuturesClient(HttpClient http, AppSettings settings)
+    public BinanceFuturesClient(HttpClient http, AppSettings settings, BinanceOptions options)
     {
-        var options = new BinanceOptions(settings.UseTestnet);
-
         _http = http;
-        _http.BaseAddress = new Uri(options.BaseUrl);
         _apiKey = settings.ApiKey;
         _secret = settings.ApiSecret;
-        _baseUrl = options.BaseUrl;
+
+        // Do NOT shadow the parameter. Keep a single source of truth:
+        _options = options ?? new BinanceOptions(settings.UseTestnet);
+
+        // Use BaseAddress; remove any _baseUrl field throughout the class.
+        _http.BaseAddress = new Uri(_options.BaseUrl);
     }
 
     public async Task<List<Kline>> GetKlinesAsync(string symbol, string interval, int limit = 500)
@@ -174,6 +176,7 @@ public class BinanceFuturesClient : IExchangeClient
         args ??= new();
         var server = await GetServerTimeAsync();
         args["timestamp"] = server.Time.ToUnixTimeMilliseconds().ToString();
+        args["recvWindow"] = _options.RecvWindowMs.ToString();
 
         var query = string.Join("&", args.OrderBy(k => k.Key).Select(kv => $"{kv.Key}={Uri.EscapeDataString(kv.Value)}"));
         var sig = Sign(query);
