@@ -16,7 +16,7 @@ var builder = Host.CreateDefaultBuilder(args)
     .UseSerilog()
     .ConfigureServices((context, services) =>
     {
-        var settings = AppSettings.Load();
+        var settings = AppSettings.Load(context.Configuration);
         services.AddSingleton(settings);
 
         services.AddSingleton<HttpClient>(_ =>

@@ -4,6 +4,9 @@
   "RiskPerTradePct": 0.01,
   "AtrMultiple": 1.5,
   "Rrr": 2.0,
+  "FundingBlackoutMinutes": 10,
+  "AtrPercentileMin": 0,
+  "AtrPercentileMax": 100,
   "Interval": "1h",
   "Symbols": ["BTCUSDT","ETHUSDT"]
 }

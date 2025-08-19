@@ -107,6 +107,8 @@ public class BotHostedService : IHostedService
 
         var last = klines[^1];
         var lastAtr = (decimal)(atr[^1].Atr ?? 0d);
+        var atrSeries = atr.Where(a => a.Atr.HasValue).Select(a => (decimal)a.Atr!.Value).ToList();
+        var atrPercentile = EntryFilters.PercentileRank(atrSeries, lastAtr);
         var signal = _strategy.Evaluate(quotes);
         Log.Information("{Symbol}: signal {Signal} @ {Price}", symbol, signal, last.Close);
 
@@ -146,19 +148,31 @@ public class BotHostedService : IHostedService
             }
         }
 
-        var account = await _exchange.GetAccountBalanceAsync();
-        var qty = _riskManager.CalculateQty(account.AvailableBalance, lastAtr, last.Close, _settings, _symbolMeta[symbol]);
-        var riskPerTrade = _settings.RiskPerTradePct * account.AvailableBalance;
-        var stopDistance = Math.Max(lastAtr * _settings.AtrMultiple, 0.001m);
-
-        if (qty <= 0m)
-        {
-            Log.Information("{Symbol}: qty too small after filters risk={Risk:F2} stop={Stop:F2} price={Price:F2}", symbol, riskPerTrade, stopDistance, last.Close);
-            return;
-        }
-
         if (!hasLong && !hasShort)
         {
+            if (EntryFilters.IsFundingBlackout(DateTimeOffset.UtcNow, _settings.FundingBlackoutMinutes))
+            {
+                Log.Information("{Symbol}: within funding blackout window — skipping", symbol);
+                return;
+            }
+
+            if (atrPercentile < _settings.AtrPercentileMin || atrPercentile > _settings.AtrPercentileMax)
+            {
+                Log.Information("{Symbol}: ATR percentile {Pct:F2} outside {Min}-{Max} — skipping", symbol, atrPercentile, _settings.AtrPercentileMin, _settings.AtrPercentileMax);
+                return;
+            }
+
+            var account = await _exchange.GetAccountBalanceAsync();
+            var qty = _riskManager.CalculateQty(account.AvailableBalance, lastAtr, last.Close, _settings, _symbolMeta[symbol]);
+            var riskPerTrade = _settings.RiskPerTradePct * account.AvailableBalance;
+            var stopDistance = Math.Max(lastAtr * _settings.AtrMultiple, 0.001m);
+
+            if (qty <= 0m)
+            {
+                Log.Information("{Symbol}: qty too small after filters risk={Risk:F2} stop={Stop:F2} price={Price:F2}", symbol, riskPerTrade, stopDistance, last.Close);
+                return;
+            }
+
             if (signal == TradeSignal.Long)
             {
                 await _orderExecutor.OpenWithBracketAsync(symbol, OrderSide.Buy, qty, last.Close, stopDistance, _symbolMeta[symbol]);
