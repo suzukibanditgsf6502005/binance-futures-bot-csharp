@@ -174,27 +174,32 @@ public class BotHostedService : IHostedService
 
             var account = await _exchange.GetAccountBalanceAsync();
             var riskPerTrade = _settings.RiskPerTradePct * account.AvailableBalance;
-            var stopDistance = Math.Max(lastAtr * _settings.AtrMultiple, 0.001m);
-            var stopPrice = last.Close - stopDistance;
+            var stopDistanceUsd = Math.Max(lastAtr * _settings.AtrMultiple, 0.001m);
+            var isShort = signal == TradeSignal.Short;
+            var stopPrice = isShort ? last.Close + stopDistanceUsd : last.Close - stopDistanceUsd;
 
             if (!_sizer.TrySize(symbol, OrderType.Market, last.Close, stopPrice, riskPerTrade, out var qty, out var reason))
             {
-                Log.Information("{Symbol}: skip (sizing failed) -> {Reason}", symbol, reason);
+                Log.Information("{Symbol}: skip (sizing failed) -> {Reason}. risk={Risk:F2} entry={Entry:F2} stopDistanceUsd={StopDist:F2} stopPrice={StopPx:F2} step={Step} minQty={MinQty} minNotional={MinNotional}",
+                    symbol, reason, riskPerTrade, last.Close, stopDistanceUsd, stopPrice, filters.StepSize, filters.MinQty, filters.MinNotional);
                 return;
             }
 
+            Log.Information("{Symbol}: risk={Risk:F2} entry={Entry:F2} stopDistanceUsd={StopDist:F2} stopPrice={StopPx:F2} qty={Qty} step={Step} minQty={MinQty} minNotional={MinNotional}",
+                symbol, riskPerTrade, last.Close, stopDistanceUsd, stopPrice, qty, filters.StepSize, filters.MinQty, filters.MinNotional);
+
             if (signal == TradeSignal.Long)
             {
-                await _orderExecutor.OpenWithBracketAsync(symbol, OrderSide.Buy, qty, last.Close, stopDistance, filters);
-                var sl = filters.ClampPrice(last.Close - stopDistance);
-                var tp = filters.ClampPrice(last.Close + stopDistance * _settings.Rrr);
+                await _orderExecutor.OpenWithBracketAsync(symbol, OrderSide.Buy, qty, last.Close, stopDistanceUsd, filters);
+                var sl = filters.ClampPrice(stopPrice);
+                var tp = filters.ClampPrice(last.Close + stopDistanceUsd * _settings.Rrr);
                 _trades[symbol] = new TradeState(OrderSide.Buy, last.Close, sl, tp);
             }
             else if (signal == TradeSignal.Short)
             {
-                await _orderExecutor.OpenWithBracketAsync(symbol, OrderSide.Sell, qty, last.Close, stopDistance, filters);
-                var sl = filters.ClampPrice(last.Close + stopDistance);
-                var tp = filters.ClampPrice(last.Close - stopDistance * _settings.Rrr);
+                await _orderExecutor.OpenWithBracketAsync(symbol, OrderSide.Sell, qty, last.Close, stopDistanceUsd, filters);
+                var sl = filters.ClampPrice(stopPrice);
+                var tp = filters.ClampPrice(last.Close - stopDistanceUsd * _settings.Rrr);
                 _trades[symbol] = new TradeState(OrderSide.Sell, last.Close, sl, tp);
             }
             else
