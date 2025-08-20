@@ -14,8 +14,8 @@
 ## Exit
 - **Stop-Loss:** `SL = ATR * AtrMultiple` (default 1.5)
 - **Take-Profit:** `TP = SL * Rrr` (default 2.0)
-- **Break-even:** move SL to entry when RR ≥ `BreakEvenAtRr` (default 1.0)
-- **Trailing:** after break-even, trail SL by `ATR * AtrTrailMultiple` (default 1.0)
+- **Break-even:** move SL to entry when RR ≥ `BreakEvenAtR` (default 1.0)
+- **Trailing:** after break-even, trail SL by `ATR * TrailingAtrMultiple` (default 1.0)
 - Orders placed as `STOP_MARKET` / `TAKE_PROFIT_MARKET` with `closePosition=true`.
 
 ## Risk & Sizing

@@ -20,9 +20,11 @@ public class AppSettings
 
     public decimal Rrr { get; set; } = 2.0m;
 
-    public decimal BreakEvenAtRr { get; set; } = 1.0m;
+    public decimal BreakEvenAtR { get; set; } = 1.0m;
 
-    public decimal AtrTrailMultiple { get; set; } = 1.0m;
+    public decimal TrailingAtrMultiple { get; set; } = 1.0m;
+
+    public int TimeStopBars { get; set; } = 0;
 
     [Required]
     public string Interval { get; set; } = "1h";
@@ -93,54 +95,59 @@ public static class TradeMath
     }
 }
 
-public class TradeState
-{
-    public OrderSide Side { get; }
-    public decimal Entry { get; }
-    public decimal Stop { get; private set; }
-    public decimal Tp { get; }
-    public decimal InitialRisk { get; }
-    public bool BreakEvenActive { get; private set; }
-
-    public TradeState(OrderSide side, decimal entry, decimal stop, decimal tp)
+    public class TradeState
     {
-        Side = side;
-        Entry = entry;
-        Stop = stop;
-        Tp = tp;
-        InitialRisk = Math.Abs(entry - stop);
-    }
+        public OrderSide Side { get; }
+        public decimal Entry { get; }
+        public decimal Stop { get; private set; }
+        public decimal Tp { get; }
+        public decimal InitialRisk { get; }
+        public bool BreakEvenActive { get; private set; }
+        public int BarsInTrade { get; private set; }
 
-    public bool Update(decimal close, decimal atr, decimal breakEvenAtRr, decimal atrTrailMultiple, SymbolFilters filters)
-    {
-        var oldStop = Stop;
-        var beTriggered = false;
-
-        if (!BreakEvenActive)
+        public TradeState(OrderSide side, decimal entry, decimal stop, decimal tp)
         {
-            var rr = Side == OrderSide.Buy ? (close - Entry) / InitialRisk : (Entry - close) / InitialRisk;
-            if (rr >= breakEvenAtRr)
+            Side = side;
+            Entry = entry;
+            Stop = stop;
+            Tp = tp;
+            InitialRisk = Math.Abs(entry - stop);
+        }
+
+        public TradeUpdate Update(decimal close, decimal atr, decimal breakEvenAtR, decimal trailingAtrMultiple, SymbolFilters filters, int timeStopBars)
+        {
+            var oldStop = Stop;
+            var beTriggered = false;
+
+            if (!BreakEvenActive)
             {
-                Stop = filters.ClampPrice(Entry);
-                BreakEvenActive = true;
-                beTriggered = true;
+                var rr = Side == OrderSide.Buy ? (close - Entry) / InitialRisk : (Entry - close) / InitialRisk;
+                if (rr >= breakEvenAtR)
+                {
+                    Stop = filters.ClampPrice(Entry);
+                    BreakEvenActive = true;
+                    beTriggered = true;
+                }
             }
+
+            if (BreakEvenActive && !beTriggered)
+            {
+                var candidate = Side == OrderSide.Buy
+                    ? close - atr * trailingAtrMultiple
+                    : close + atr * trailingAtrMultiple;
+                candidate = filters.ClampPrice(candidate);
+
+                if (Side == OrderSide.Buy)
+                    Stop = Math.Max(Stop, candidate);
+                else
+                    Stop = Math.Min(Stop, candidate);
+            }
+
+            BarsInTrade++;
+            var timeExit = timeStopBars > 0 && BarsInTrade >= timeStopBars;
+            return new TradeUpdate(Stop != oldStop, timeExit);
         }
-
-        if (BreakEvenActive && !beTriggered)
-        {
-            var candidate = Side == OrderSide.Buy
-                ? close - atr * atrTrailMultiple
-                : close + atr * atrTrailMultiple;
-            candidate = filters.ClampPrice(candidate);
-
-            if (Side == OrderSide.Buy)
-                Stop = Math.Max(Stop, candidate);
-            else
-                Stop = Math.Min(Stop, candidate);
-        }
-
-        return Stop != oldStop;
     }
-}
+
+    public record TradeUpdate(bool StopChanged, bool TimeExit);
 

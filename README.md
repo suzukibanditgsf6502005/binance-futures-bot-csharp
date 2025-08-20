@@ -84,6 +84,9 @@ Example `appsettings.Development.json`:
 - `AtrMultiple`: e.g. `1.5`
 - `Rrr`: e.g. `2.0`
 - `Interval`: `1h` (day trading)
+- `BreakEvenAtR`: e.g. `1.0`
+- `TrailingAtrMultiple`: e.g. `1.0`
+- `TimeStopBars`: e.g. `0` (disabled)
 - `Symbols`: `["BTCUSDT","ETHUSDT"]`
 
 ## Safety
