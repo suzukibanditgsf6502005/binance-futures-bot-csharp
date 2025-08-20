@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Net.Http;
 using System.Text.Json;
 using Application;
+using Microsoft.Extensions.Options;
 using Serilog;
 
 namespace Infrastructure.Binance;
@@ -14,12 +15,16 @@ public class BinanceFuturesClient : IExchangeClient
     private static readonly Random _jitter = new();
     private readonly Signer _signer;
 
-    public BinanceFuturesClient(HttpClient http, AppSettings settings, BinanceOptions options, Signer signer)
+    public BinanceFuturesClient(
+        HttpClient http,
+        AppSettings settings,
+        IOptions<BinanceOptions> options,
+        Signer signer)
     {
         _http = http;
         _apiKey = settings.ApiKey;
         _signer = signer;
-        _options = options ?? new BinanceOptions(settings.UseTestnet);
+        _options = options.Value;
         _http.BaseAddress = new Uri(_options.BaseUrl);
     }
 

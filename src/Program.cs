@@ -55,29 +55,16 @@ var builder = Host.CreateDefaultBuilder(args)
 
         services.AddSingleton(sp => sp.GetRequiredService<IOptions<AppSettings>>().Value);
 
-        services.AddOptions<BinanceOptions>()
-            .Bind(context.Configuration.GetSection("Binance"))
-            .ValidateOnStart();
-        services.AddSingleton(sp =>
-        {
-            var o = sp.GetRequiredService<IOptions<BinanceOptions>>().Value;
-            return new BinanceOptions(context.Configuration.GetValue<bool>("UseTestnet"))
-            {
-                RecvWindowMs = o.RecvWindowMs
-            };
-        });
+        services.Configure<BinanceOptions>(context.Configuration.GetSection("Binance"));
 
-        services.AddSingleton<HttpClient>(sp =>
+        services.PostConfigure<BinanceOptions>(o =>
         {
-            var settings = sp.GetRequiredService<AppSettings>();
-            return new HttpClient(new SocketsHttpHandler
-            {
-                PooledConnectionLifetime = TimeSpan.FromMinutes(15),
-                AutomaticDecompression = DecompressionMethods.All
-            })
-            {
-                BaseAddress = new Uri(settings.BaseUrl)
-            };
+            var cfg = context.Configuration;
+            var useTestnet = cfg.GetValue<bool?>("UseTestnet");
+            if (useTestnet.HasValue) o.UseTestnet = useTestnet.Value;
+
+            var rw = cfg.GetValue<int?>("RecvWindowMs");
+            if (rw.HasValue) o.RecvWindowMs = rw.Value;
         });
 
         var alertsEnabled = Environment.GetEnvironmentVariable("TELEGRAM_ALERTS_ENABLED") == "1";
@@ -97,7 +84,12 @@ var builder = Host.CreateDefaultBuilder(args)
 
         services.AddSingleton<IBinanceClock, SystemClock>();
         services.AddSingleton(sp => new Signer(sp.GetRequiredService<AppSettings>().ApiSecret));
-        services.AddSingleton<IExchangeClient, BinanceFuturesClient>();
+        services.AddHttpClient<IExchangeClient, BinanceFuturesClient>()
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+            {
+                PooledConnectionLifetime = TimeSpan.FromMinutes(15),
+                AutomaticDecompression = DecompressionMethods.All
+            });
         services.AddSingleton<IStrategy, EmaRsiStrategy>();
         services.AddSingleton<IRiskManager, AtrRiskManager>();
         services.AddSingleton<IOrderExecutor, BracketOrderExecutor>();
