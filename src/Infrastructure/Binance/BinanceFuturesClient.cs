@@ -161,7 +161,11 @@ public class BinanceFuturesClient : IExchangeClient
         var signature = _signer.SignToHex(encodedQuery);
         var finalQuery = $"{encodedQuery}&signature={signature}";
 
-        using var req = new HttpRequestMessage(HttpMethod.Get, path + "?" + finalQuery);
+        var url = path + "?" + finalQuery;
+        Log.Debug("GetPositionRisk query: nowMs={NowMs} encodedQuery={EncodedQuery} url={Url}",
+            nowMs, encodedQuery, url);
+
+        using var req = new HttpRequestMessage(HttpMethod.Get, url);
         req.Headers.TryAddWithoutValidation("X-MBX-APIKEY", _apiKey);
 
         var resp = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead);
