@@ -14,4 +14,5 @@ Thumbs.db
 
 # Secrets (never commit)
 appsettings.*.json
+!appsettings.Development.json
 *.key
