@@ -3,9 +3,12 @@ using System.Globalization;
 using System.Linq;
 using System.Net.Http;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using Application;
+using Infrastructure.Binance.Converters;
+using Infrastructure.Binance.Models;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -20,6 +23,12 @@ public class BinanceFuturesClient : IExchangeClient
     private readonly Signer _signer;
     private readonly IBinanceClock _clock;
     private readonly ILogger<BinanceFuturesClient> _logger;
+    private readonly JsonSerializerOptions _json = new(JsonSerializerDefaults.Web)
+    {
+        PropertyNameCaseInsensitive = true,
+        NumberHandling = JsonNumberHandling.AllowReadingFromString,
+        Converters = { new DecimalStringConverter() }
+    };
 
     public BinanceFuturesClient(
         HttpClient http,
@@ -51,11 +60,11 @@ public class BinanceFuturesClient : IExchangeClient
         foreach (var e in arr.EnumerateArray())
         {
             var openTime = DateTimeOffset.FromUnixTimeMilliseconds(e[0].GetInt64()).UtcDateTime;
-            var open  = decimal.Parse(e[1].GetString()!, CultureInfo.InvariantCulture);
-            var high  = decimal.Parse(e[2].GetString()!, CultureInfo.InvariantCulture);
-            var low   = decimal.Parse(e[3].GetString()!, CultureInfo.InvariantCulture);
+            var open = decimal.Parse(e[1].GetString()!, CultureInfo.InvariantCulture);
+            var high = decimal.Parse(e[2].GetString()!, CultureInfo.InvariantCulture);
+            var low = decimal.Parse(e[3].GetString()!, CultureInfo.InvariantCulture);
             var close = decimal.Parse(e[4].GetString()!, CultureInfo.InvariantCulture);
-            var vol   = decimal.Parse(e[5].GetString()!, CultureInfo.InvariantCulture);
+            var vol = decimal.Parse(e[5].GetString()!, CultureInfo.InvariantCulture);
             var closeTime = DateTimeOffset.FromUnixTimeMilliseconds(e[6].GetInt64()).UtcDateTime;
 
             list.Add(new Kline
@@ -205,7 +214,7 @@ public class BinanceFuturesClient : IExchangeClient
         }
         await resp.EnsureSuccessOrThrowAsync();
 
-        var arr = JsonSerializer.Deserialize<List<AccountBalance>>(body)!;
+        var arr = JsonSerializer.Deserialize<List<AccountBalance>>(body, _json)!;
         var usdt = arr.FirstOrDefault(x => x.Asset.Equals("USDT", StringComparison.OrdinalIgnoreCase));
         return new AccountInfo(usdt?.Balance ?? 0m, usdt?.AvailableBalance ?? 0m);
     }
@@ -227,8 +236,13 @@ public class BinanceFuturesClient : IExchangeClient
         }
         await resp.EnsureSuccessOrThrowAsync();
 
-        var arr = JsonSerializer.Deserialize<List<PositionRisk>>(body)!;
-        return arr[0];
+        var arr = JsonSerializer.Deserialize<List<PositionRiskDto>>(body, _json) ?? new();
+        var dto = arr.FirstOrDefault();
+        return new PositionRisk
+        {
+            Symbol = dto?.Symbol ?? symbol,
+            PositionAmt = dto?.PositionAmt ?? 0m
+        };
     }
 
     public async Task<SymbolFilters> GetSymbolFiltersAsync(string symbol)
