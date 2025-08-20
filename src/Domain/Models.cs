@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json.Serialization;
+using Infrastructure.Binance.Models;
 
 public class AppSettings
 {
@@ -143,16 +144,3 @@ public class TradeState
     }
 }
 
-public record SymbolFilters(decimal StepSize, decimal TickSize, decimal MinNotional)
-{
-    public decimal ClampQuantity(decimal qty)
-    {
-        if (qty <= 0) return 0;
-        return Math.Floor(qty / StepSize) * StepSize;
-    }
-
-    public decimal ClampPrice(decimal price)
-    {
-        return Math.Round(Math.Floor(price / TickSize) * TickSize, 8);
-    }
-}

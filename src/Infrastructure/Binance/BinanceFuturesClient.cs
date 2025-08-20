@@ -252,16 +252,44 @@ public class BinanceFuturesClient : IExchangeClient
         var json = await res.Content.ReadAsStringAsync();
         var doc = JsonDocument.Parse(json);
         var sym = doc.RootElement.GetProperty("symbols")[0];
-        decimal tick = 0.01m, step = 0.001m, minNotional = 5m;
+        decimal tick = 0.01m, step = 0.001m;
+        decimal? minQty = null, marketMinQty = null, minNotional = null;
         foreach (var f in sym.GetProperty("filters").EnumerateArray())
         {
             var type = f.GetProperty("filterType").GetString();
-            if (type == "PRICE_FILTER") tick = decimal.Parse(f.GetProperty("tickSize").GetString()!);
-            if (type == "LOT_SIZE") step = decimal.Parse(f.GetProperty("stepSize").GetString()!);
-            if (type == "MIN_NOTIONAL" && f.TryGetProperty("notional", out var n)) minNotional = decimal.Parse(n.GetString()!);
+            if (type == "PRICE_FILTER")
+            {
+                tick = decimal.Parse(f.GetProperty("tickSize").GetString()!, CultureInfo.InvariantCulture);
+            }
+            else if (type == "LOT_SIZE")
+            {
+                step = decimal.Parse(f.GetProperty("stepSize").GetString()!, CultureInfo.InvariantCulture);
+                if (f.TryGetProperty("minQty", out var mq))
+                    minQty = decimal.Parse(mq.GetString()!, CultureInfo.InvariantCulture);
+            }
+            else if (type == "MARKET_LOT_SIZE")
+            {
+                if (f.TryGetProperty("minQty", out var mmq))
+                    marketMinQty = decimal.Parse(mmq.GetString()!, CultureInfo.InvariantCulture);
+            }
+            else if (type == "MIN_NOTIONAL" || type == "NOTIONAL")
+            {
+                if (f.TryGetProperty("minNotional", out var mn))
+                    minNotional = decimal.Parse(mn.GetString()!, CultureInfo.InvariantCulture);
+                else if (f.TryGetProperty("notional", out var n))
+                    minNotional = decimal.Parse(n.GetString()!, CultureInfo.InvariantCulture);
+            }
         }
 
-        return new SymbolFilters(step, tick, minNotional);
+        return new SymbolFilters
+        {
+            Symbol = symbol.ToUpperInvariant(),
+            TickSize = tick,
+            StepSize = step,
+            MinQty = minQty,
+            MarketMinQty = marketMinQty,
+            MinNotional = minNotional
+        };
     }
 
     private HttpRequestMessage CreateSignedRequest(HttpMethod method, string path, SortedDictionary<string, string> parameters)

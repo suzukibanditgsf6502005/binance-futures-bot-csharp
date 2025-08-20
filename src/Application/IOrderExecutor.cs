@@ -1,3 +1,5 @@
+using Infrastructure.Binance.Models;
+
 namespace Application;
 
 public interface IOrderExecutor

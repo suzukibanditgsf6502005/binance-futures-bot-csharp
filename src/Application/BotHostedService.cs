@@ -1,6 +1,8 @@
 using Microsoft.Extensions.Hosting;
 using Skender.Stock.Indicators;
 using Serilog;
+using Domain.Trading;
+using Infrastructure.Binance.Models;
 
 namespace Application;
 
@@ -10,23 +12,24 @@ public class BotHostedService : IHostedService
     private readonly AppSettings _settings;
     private readonly bool _dryRun;
     private readonly IStrategy _strategy;
-    private readonly IRiskManager _riskManager;
     private readonly IOrderExecutor _orderExecutor;
-    private readonly Dictionary<string, SymbolFilters> _symbolMeta = new(StringComparer.OrdinalIgnoreCase);
+    private readonly OrderSizingService _sizer;
+    private readonly ISymbolFiltersRepository _filters;
     private readonly IAlertService _alerts;
     private readonly Dictionary<string, TradeState> _trades = new(StringComparer.OrdinalIgnoreCase);
     private PeriodicTimer? _timer;
     private Task? _executingTask;
     private readonly CancellationTokenSource _cts = new();
 
-    public BotHostedService(IExchangeClient exchange, AppSettings settings, BotOptions options, IStrategy strategy, IRiskManager riskManager, IOrderExecutor orderExecutor, IAlertService alerts)
+    public BotHostedService(IExchangeClient exchange, AppSettings settings, BotOptions options, IStrategy strategy, IOrderExecutor orderExecutor, OrderSizingService sizer, ISymbolFiltersRepository filters, IAlertService alerts)
     {
         _exchange = exchange;
         _settings = settings;
         _dryRun = options.DryRun;
         _strategy = strategy;
-        _riskManager = riskManager;
         _orderExecutor = orderExecutor;
+        _sizer = sizer;
+        _filters = filters;
         _alerts = alerts;
     }
 
@@ -38,8 +41,9 @@ public class BotHostedService : IHostedService
 
         foreach (var s in _settings.Symbols)
         {
-            _symbolMeta[s] = await _exchange.GetSymbolFiltersAsync(s);
-            Log.Information("Loaded filters for {Symbol}: tickSize={Tick} stepSize={Step}", s, _symbolMeta[s].TickSize, _symbolMeta[s].StepSize);
+            var f = await _exchange.GetSymbolFiltersAsync(s);
+            _filters.Set(f);
+            Log.Information("Loaded filters for {Symbol}: tickSize={Tick} stepSize={Step} minQty={MinQty} minNotional={MinNotional}", s, f.TickSize, f.StepSize, f.MinQty, f.MinNotional);
         }
 
         foreach (var s in _settings.Symbols)
@@ -92,6 +96,12 @@ public class BotHostedService : IHostedService
             return;
         }
 
+        if (!_filters.TryGet(symbol, out var filters))
+        {
+            Log.Warning("{Symbol}: missing filters", symbol);
+            return;
+        }
+
         IEnumerable<Quote> quotes = klines.Select(k => new Quote
         {
             Date = DateTime.SpecifyKind(k.OpenTimeUtc, DateTimeKind.Utc),
@@ -137,7 +147,7 @@ public class BotHostedService : IHostedService
 
         if ((hasLong || hasShort) && _trades.TryGetValue(symbol, out var active))
         {
-            var changed = active.Update(last.Close, lastAtr, _settings.BreakEvenAtRr, _settings.AtrTrailMultiple, _symbolMeta[symbol]);
+            var changed = active.Update(last.Close, lastAtr, _settings.BreakEvenAtRr, _settings.AtrTrailMultiple, filters);
             if (changed)
             {
                 var exitSide = active.Side == OrderSide.Buy ? OrderSide.Sell : OrderSide.Buy;
@@ -163,28 +173,28 @@ public class BotHostedService : IHostedService
             }
 
             var account = await _exchange.GetAccountBalanceAsync();
-            var qty = _riskManager.CalculateQty(account.AvailableBalance, lastAtr, last.Close, _settings, _symbolMeta[symbol]);
             var riskPerTrade = _settings.RiskPerTradePct * account.AvailableBalance;
             var stopDistance = Math.Max(lastAtr * _settings.AtrMultiple, 0.001m);
+            var stopPrice = last.Close - stopDistance;
 
-            if (qty <= 0m)
+            if (!_sizer.TrySize(symbol, OrderType.Market, last.Close, stopPrice, riskPerTrade, out var qty, out var reason))
             {
-                Log.Information("{Symbol}: qty too small after filters risk={Risk:F2} stop={Stop:F2} price={Price:F2}", symbol, riskPerTrade, stopDistance, last.Close);
+                Log.Information("{Symbol}: skip (sizing failed) -> {Reason}", symbol, reason);
                 return;
             }
 
             if (signal == TradeSignal.Long)
             {
-                await _orderExecutor.OpenWithBracketAsync(symbol, OrderSide.Buy, qty, last.Close, stopDistance, _symbolMeta[symbol]);
-                var sl = _symbolMeta[symbol].ClampPrice(last.Close - stopDistance);
-                var tp = _symbolMeta[symbol].ClampPrice(last.Close + stopDistance * _settings.Rrr);
+                await _orderExecutor.OpenWithBracketAsync(symbol, OrderSide.Buy, qty, last.Close, stopDistance, filters);
+                var sl = filters.ClampPrice(last.Close - stopDistance);
+                var tp = filters.ClampPrice(last.Close + stopDistance * _settings.Rrr);
                 _trades[symbol] = new TradeState(OrderSide.Buy, last.Close, sl, tp);
             }
             else if (signal == TradeSignal.Short)
             {
-                await _orderExecutor.OpenWithBracketAsync(symbol, OrderSide.Sell, qty, last.Close, stopDistance, _symbolMeta[symbol]);
-                var sl = _symbolMeta[symbol].ClampPrice(last.Close + stopDistance);
-                var tp = _symbolMeta[symbol].ClampPrice(last.Close - stopDistance * _settings.Rrr);
+                await _orderExecutor.OpenWithBracketAsync(symbol, OrderSide.Sell, qty, last.Close, stopDistance, filters);
+                var sl = filters.ClampPrice(last.Close + stopDistance);
+                var tp = filters.ClampPrice(last.Close - stopDistance * _settings.Rrr);
                 _trades[symbol] = new TradeState(OrderSide.Sell, last.Close, sl, tp);
             }
             else
