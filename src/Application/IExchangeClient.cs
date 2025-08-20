@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Infrastructure.Binance.Models;
 
 namespace Application;
 

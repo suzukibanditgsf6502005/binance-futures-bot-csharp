@@ -1,3 +1,5 @@
+using Infrastructure.Binance.Models;
+
 namespace BinanceBot.Tests;
 
 public class TrailingStopTests
@@ -5,7 +7,7 @@ public class TrailingStopTests
     [Fact]
     public void BreakEvenTriggersAtConfiguredRr()
     {
-        var filters = new global::SymbolFilters(0.001m, 0.1m, 5m);
+        var filters = new SymbolFilters { Symbol = "TST", StepSize = 0.001m, TickSize = 0.1m, MinNotional = 5m };
         var trade = new global::TradeState(global::OrderSide.Buy, 100m, 98m, 104m);
 
         var changed = trade.Update(101m, 1m, 1m, 1m, filters);
@@ -20,7 +22,7 @@ public class TrailingStopTests
     [Fact]
     public void TrailingUpdatesAcrossCandles()
     {
-        var filters = new global::SymbolFilters(0.001m, 0.1m, 5m);
+        var filters = new SymbolFilters { Symbol = "TST", StepSize = 0.001m, TickSize = 0.1m, MinNotional = 5m };
         var trade = new global::TradeState(global::OrderSide.Buy, 100m, 98m, 104m);
 
         trade.Update(102m, 1m, 1m, 1m, filters);

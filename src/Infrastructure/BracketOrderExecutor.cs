@@ -1,4 +1,5 @@
 using Application;
+using Infrastructure.Binance.Models;
 using Serilog;
 
 namespace Infrastructure;

@@ -1,5 +1,6 @@
 using Application;
 using Infrastructure;
+using Infrastructure.Binance.Models;
 
 namespace BinanceBot.Tests;
 
@@ -36,7 +37,7 @@ public class OrderExecutorDryRunTests
         }
         public Task<AccountInfo> GetAccountBalanceAsync() => Task.FromResult(new AccountInfo(0,0));
         public Task<PositionRisk> GetPositionRiskAsync(string symbol) => Task.FromResult(new PositionRisk());
-        public Task<SymbolFilters> GetSymbolFiltersAsync(string symbol) => Task.FromResult(new SymbolFilters(0.001m,0.1m,5m));
+        public Task<SymbolFilters> GetSymbolFiltersAsync(string symbol) => Task.FromResult(new SymbolFilters { Symbol = symbol, StepSize = 0.001m, TickSize = 0.1m, MinNotional = 5m });
     }
 
     [Fact]
@@ -45,7 +46,7 @@ public class OrderExecutorDryRunTests
         var exchange = new FakeExchangeClient();
         var settings = new AppSettings { ApiKey = "test", ApiSecret = "test" };
         var executor = new BracketOrderExecutor(exchange, settings, new BotOptions(true), new NoopAlertService());
-        var filters = new SymbolFilters(0.001m, 0.1m, 5m);
+        var filters = new SymbolFilters { Symbol = "BTCUSDT", StepSize = 0.001m, TickSize = 0.1m, MinNotional = 5m };
 
         await executor.OpenWithBracketAsync("BTCUSDT", OrderSide.Buy, 1m, 100m, 1m, filters);
         await executor.FlipCloseAsync("BTCUSDT", PositionSide.Long);

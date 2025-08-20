@@ -4,9 +4,11 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Logging;
 using Application;
 using Infrastructure.Binance;
 using Infrastructure;
+using Domain.Trading;
 using Serilog;
 
 Log.Logger = new LoggerConfiguration()
@@ -100,6 +102,13 @@ var builder = Host.CreateDefaultBuilder(args)
         services.AddSingleton<IStrategy, EmaRsiStrategy>();
         services.AddSingleton<IRiskManager, AtrRiskManager>();
         services.AddSingleton<IOrderExecutor, BracketOrderExecutor>();
+        services.AddSingleton<ISymbolFiltersRepository, SymbolFiltersRepository>();
+        services.AddSingleton<OrderSizingService>(sp =>
+        {
+            var logger = sp.GetRequiredService<ILogger<OrderSizingService>>();
+            var repo = sp.GetRequiredService<ISymbolFiltersRepository>();
+            return new OrderSizingService(logger, symbol => repo.TryGet(symbol, out var f) ? f : null);
+        });
         services.AddSingleton(new BotOptions(args.Contains("--dry")));
         services.AddHostedService<BotHostedService>();
     });
