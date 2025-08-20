@@ -1,0 +1,1 @@
+- Fixed: positionRisk parsing (Binance numbers-as-strings) by enabling JsonNumberHandling.AllowReadingFromString and DTO alignment. Added unit test.
