@@ -1,9 +1,13 @@
+using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Net.Http;
 using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
 using Application;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Serilog;
 
 namespace Infrastructure.Binance;
 
@@ -14,18 +18,23 @@ public class BinanceFuturesClient : IExchangeClient
     private readonly BinanceOptions _options;
     private static readonly Random _jitter = new();
     private readonly Signer _signer;
+    private readonly IBinanceClock _clock;
+    private readonly ILogger<BinanceFuturesClient> _logger;
 
     public BinanceFuturesClient(
         HttpClient http,
         AppSettings settings,
         IOptions<BinanceOptions> options,
-        Signer signer)
+        IBinanceClock clock,
+        ILogger<BinanceFuturesClient> logger)
     {
         _http = http;
         _apiKey = settings.ApiKey;
-        _signer = signer;
         _options = options.Value;
         _http.BaseAddress = new Uri(_options.BaseUrl);
+        _signer = new Signer(settings.ApiSecret);
+        _clock = clock;
+        _logger = logger;
     }
 
     public async Task<List<Kline>> GetKlinesAsync(string symbol, string interval, int limit = 500)
@@ -67,54 +76,92 @@ public class BinanceFuturesClient : IExchangeClient
 
     public async Task SetLeverageAsync(string symbol, int leverage)
     {
-        var payload = new Dictionary<string, string>
+        const string path = "/fapi/v1/leverage";
+        var dict = new SortedDictionary<string, string>(StringComparer.Ordinal)
         {
-            ["symbol"] = symbol.ToUpper(),
-            ["leverage"] = leverage.ToString()
+            ["symbol"] = symbol.ToUpperInvariant(),
+            ["leverage"] = leverage.ToString(CultureInfo.InvariantCulture)
         };
-        await SendSignedAsync(HttpMethod.Post, "/fapi/v1/leverage", payload);
+
+        using var req = CreateSignedRequest(HttpMethod.Post, path, dict);
+        var resp = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead);
+        var body = await resp.Content.ReadAsStringAsync();
+        if (!resp.IsSuccessStatusCode)
+        {
+            _logger.LogError("Binance error {Status}: {Body}", (int)resp.StatusCode, body);
+        }
+        await resp.EnsureSuccessOrThrowAsync();
+
+        _logger.LogInformation("Leverage changed on {Symbol} -> x{Lev}. Response: {Body}", symbol, leverage, body);
     }
 
     public async Task<OrderResult> PlaceMarketAsync(string symbol, OrderSide side, decimal quantity)
     {
-        var p = new Dictionary<string, string>
+        const string path = "/fapi/v1/order";
+        var dict = new SortedDictionary<string, string>(StringComparer.Ordinal)
         {
-            ["symbol"] = symbol.ToUpper(),
+            ["symbol"] = symbol.ToUpperInvariant(),
             ["side"] = side == OrderSide.Buy ? "BUY" : "SELL",
             ["type"] = "MARKET",
             ["quantity"] = quantity.ToString(CultureInfo.InvariantCulture),
             ["reduceOnly"] = "false"
         };
-        var (ok, body) = await SendSignedAsync(HttpMethod.Post, "/fapi/v1/order", p);
-        return new OrderResult(ok, ok ? null : body);
+
+        using var req = CreateSignedRequest(HttpMethod.Post, path, dict);
+        var resp = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead);
+        var body = await resp.Content.ReadAsStringAsync();
+        if (!resp.IsSuccessStatusCode)
+        {
+            _logger.LogError("Binance error {Status}: {Body}", (int)resp.StatusCode, body);
+            return new OrderResult(false, body);
+        }
+        return new OrderResult(true, null);
     }
 
     public async Task PlaceStopMarketCloseAsync(string symbol, OrderSide side, decimal stopPrice)
     {
-        var p = new Dictionary<string, string>
+        const string path = "/fapi/v1/order";
+        var dict = new SortedDictionary<string, string>(StringComparer.Ordinal)
         {
-            ["symbol"] = symbol.ToUpper(),
+            ["symbol"] = symbol.ToUpperInvariant(),
             ["side"] = side == OrderSide.Buy ? "BUY" : "SELL",
             ["type"] = "STOP_MARKET",
             ["stopPrice"] = stopPrice.ToString(CultureInfo.InvariantCulture),
             ["closePosition"] = "true",
             ["timeInForce"] = "GTC"
         };
-        await SendSignedAsync(HttpMethod.Post, "/fapi/v1/order", p);
+
+        using var req = CreateSignedRequest(HttpMethod.Post, path, dict);
+        var resp = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead);
+        var body = await resp.Content.ReadAsStringAsync();
+        if (!resp.IsSuccessStatusCode)
+        {
+            _logger.LogError("Binance error {Status}: {Body}", (int)resp.StatusCode, body);
+        }
+        await resp.EnsureSuccessOrThrowAsync();
     }
 
     public async Task PlaceTakeProfitMarketCloseAsync(string symbol, OrderSide side, decimal stopPrice)
     {
-        var p = new Dictionary<string, string>
+        const string path = "/fapi/v1/order";
+        var dict = new SortedDictionary<string, string>(StringComparer.Ordinal)
         {
-            ["symbol"] = symbol.ToUpper(),
+            ["symbol"] = symbol.ToUpperInvariant(),
             ["side"] = side == OrderSide.Buy ? "BUY" : "SELL",
             ["type"] = "TAKE_PROFIT_MARKET",
             ["stopPrice"] = stopPrice.ToString(CultureInfo.InvariantCulture),
             ["closePosition"] = "true",
             ["timeInForce"] = "GTC"
         };
-        await SendSignedAsync(HttpMethod.Post, "/fapi/v1/order", p);
+
+        using var req = CreateSignedRequest(HttpMethod.Post, path, dict);
+        var resp = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead);
+        var body = await resp.Content.ReadAsStringAsync();
+        if (!resp.IsSuccessStatusCode)
+        {
+            _logger.LogError("Binance error {Status}: {Body}", (int)resp.StatusCode, body);
+        }
+        await resp.EnsureSuccessOrThrowAsync();
     }
 
     public async Task ClosePositionMarketAsync(string symbol, PositionSide _)
@@ -123,21 +170,41 @@ public class BinanceFuturesClient : IExchangeClient
         var qty = Math.Abs(pr.PositionAmt);
         if (qty <= 0m) return;
         var side = pr.PositionAmt > 0 ? OrderSide.Sell : OrderSide.Buy;
-        var p = new Dictionary<string, string>
+
+        const string path = "/fapi/v1/order";
+        var dict = new SortedDictionary<string, string>(StringComparer.Ordinal)
         {
-            ["symbol"] = symbol.ToUpper(),
+            ["symbol"] = symbol.ToUpperInvariant(),
             ["side"] = side == OrderSide.Buy ? "BUY" : "SELL",
             ["type"] = "MARKET",
             ["quantity"] = qty.ToString(CultureInfo.InvariantCulture),
             ["reduceOnly"] = "true"
         };
-        await SendSignedAsync(HttpMethod.Post, "/fapi/v1/order", p);
+
+        using var req = CreateSignedRequest(HttpMethod.Post, path, dict);
+        var resp = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead);
+        var body = await resp.Content.ReadAsStringAsync();
+        if (!resp.IsSuccessStatusCode)
+        {
+            _logger.LogError("Binance error {Status}: {Body}", (int)resp.StatusCode, body);
+        }
+        await resp.EnsureSuccessOrThrowAsync();
     }
 
     public async Task<AccountInfo> GetAccountBalanceAsync()
     {
-        var (ok, body) = await SendSignedAsync(HttpMethod.Get, "/fapi/v2/balance");
-        if (!ok) throw new Exception(body);
+        const string path = "/fapi/v2/balance";
+        var dict = new SortedDictionary<string, string>(StringComparer.Ordinal);
+
+        using var req = CreateSignedRequest(HttpMethod.Get, path, dict);
+        var resp = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead);
+        var body = await resp.Content.ReadAsStringAsync();
+        if (!resp.IsSuccessStatusCode)
+        {
+            _logger.LogError("Binance error {Status}: {Body}", (int)resp.StatusCode, body);
+        }
+        await resp.EnsureSuccessOrThrowAsync();
+
         var arr = JsonSerializer.Deserialize<List<AccountBalance>>(body)!;
         var usdt = arr.FirstOrDefault(x => x.Asset.Equals("USDT", StringComparison.OrdinalIgnoreCase));
         return new AccountInfo(usdt?.Balance ?? 0m, usdt?.AvailableBalance ?? 0m);
@@ -146,30 +213,19 @@ public class BinanceFuturesClient : IExchangeClient
     public async Task<PositionRisk> GetPositionRiskAsync(string symbol)
     {
         const string path = "/fapi/v2/positionRisk";
-        var nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-        var recvWindow = _options.RecvWindowMs;
-
         var dict = new SortedDictionary<string, string>(StringComparer.Ordinal)
         {
-            ["timestamp"] = nowMs.ToString(CultureInfo.InvariantCulture),
-            ["recvWindow"] = recvWindow.ToString(CultureInfo.InvariantCulture),
             ["symbol"] = symbol.ToUpperInvariant()
         };
 
-        string Encode(string s) => Uri.EscapeDataString(s);
-        var encodedQuery = string.Join("&", dict.Select(kv => $"{kv.Key}={Encode(kv.Value)}"));
-
-        var signature = _signer.SignToHex(encodedQuery);
-        var finalQuery = $"{encodedQuery}&signature={signature}";
-
-        var url = path + "?" + finalQuery;
-        using var req = new HttpRequestMessage(HttpMethod.Get, url);
-        req.Headers.TryAddWithoutValidation("X-MBX-APIKEY", _apiKey);
-
+        using var req = CreateSignedRequest(HttpMethod.Get, path, dict);
         var resp = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead);
         var body = await resp.Content.ReadAsStringAsync();
         if (!resp.IsSuccessStatusCode)
-            throw new Exception(body);
+        {
+            _logger.LogError("Binance error {Status}: {Body}", (int)resp.StatusCode, body);
+        }
+        await resp.EnsureSuccessOrThrowAsync();
 
         var arr = JsonSerializer.Deserialize<List<PositionRisk>>(body)!;
         return arr[0];
@@ -194,33 +250,21 @@ public class BinanceFuturesClient : IExchangeClient
         return new SymbolFilters(step, tick, minNotional);
     }
 
-    private async Task<(bool ok, string body)> SendSignedAsync(HttpMethod method, string path, Dictionary<string, string>? args = null)
+    private HttpRequestMessage CreateSignedRequest(HttpMethod method, string path, SortedDictionary<string, string> parameters)
     {
-        args ??= new();
+        parameters["timestamp"] = _clock.UtcNowMsAdjusted().ToString(CultureInfo.InvariantCulture);
+        parameters["recvWindow"] = _options.RecvWindowMs.ToString(CultureInfo.InvariantCulture);
 
-        var server = await GetServerTimeAsync();
-        args["timestamp"] = server.Time.ToUnixTimeMilliseconds().ToString();
-        args["recvWindow"] = _options.RecvWindowMs.ToString();
+        string Encode(string s) => Uri.EscapeDataString(s);
+        var encodedQuery = string.Join("&", parameters.Select(kv => $"{kv.Key}={Encode(kv.Value)}"));
+        var signature = _signer.SignToHex(encodedQuery);
+        var url = path + "?" + encodedQuery + "&signature=" + signature;
 
-        var query = string.Join("&", args.OrderBy(k => k.Key).Select(kv => $"{kv.Key}={Uri.EscapeDataString(kv.Value)}"));
-        var sig = _signer.SignToHex(query);
-        var requestUri = path + "?" + query + "&signature=" + sig;
+        _logger.LogDebug("{Path} encodedQuery={Q} sig={S}", path, encodedQuery, signature);
 
-        var req = new HttpRequestMessage(method, requestUri);
-        req.Headers.Add("X-MBX-APIKEY", _apiKey);
-        var resp = await SendWithRetryAsync(() => _http.SendAsync(req));
-        var body = await resp.Content.ReadAsStringAsync();
-        return (resp.IsSuccessStatusCode, body);
-    }
-
-    public async Task<ServerTime> GetServerTimeAsync()
-    {
-        var r = await SendWithRetryAsync(() => _http.GetAsync("/fapi/v1/time"));
-        r.EnsureSuccessStatusCode();
-        var json = await r.Content.ReadAsStringAsync();
-        var doc = JsonDocument.Parse(json);
-        var ms = doc.RootElement.GetProperty("serverTime").GetInt64();
-        return new ServerTime(DateTimeOffset.FromUnixTimeMilliseconds(ms));
+        var req = new HttpRequestMessage(method, url);
+        req.Headers.TryAddWithoutValidation("X-MBX-APIKEY", _apiKey);
+        return req;
     }
 
     private static bool ShouldRetry(HttpResponseMessage response)
@@ -240,7 +284,7 @@ public class BinanceFuturesClient : IExchangeClient
             }
 
             var delay = TimeSpan.FromSeconds(Math.Pow(2, attempt)) + TimeSpan.FromMilliseconds(_jitter.Next(0, 1000));
-            Log.Warning("HTTP {Status} received, retrying in {Delay} (attempt {Attempt})", (int)response.StatusCode, delay, attempt + 1);
+            _logger.LogWarning("HTTP {Status} received, retrying in {Delay} (attempt {Attempt})", (int)response.StatusCode, delay, attempt + 1);
             response.Dispose();
             await Task.Delay(delay);
         }

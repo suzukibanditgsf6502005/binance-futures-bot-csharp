@@ -82,8 +82,15 @@ var builder = Host.CreateDefaultBuilder(args)
             services.AddSingleton<IAlertService, NoopAlertService>();
         }
 
-        services.AddSingleton<IBinanceClock, SystemClock>();
-        services.AddSingleton(sp => new Signer(sp.GetRequiredService<AppSettings>().ApiSecret));
+        services.AddHttpClient("BinancePublic", (sp, http) =>
+        {
+            var opt = sp.GetRequiredService<IOptions<BinanceOptions>>().Value;
+            http.BaseAddress = new Uri(opt.BaseUrl);
+        });
+
+        services.AddSingleton<IBinanceClock, TimeSyncClock>();
+        services.AddHostedService(sp => (TimeSyncClock)sp.GetRequiredService<IBinanceClock>());
+
         services.AddHttpClient<IExchangeClient, BinanceFuturesClient>()
             .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
             {

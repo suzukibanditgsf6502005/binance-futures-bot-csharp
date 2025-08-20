@@ -2,6 +2,8 @@ using System.Net;
 using System.Net.Http;
 using System.Linq;
 using Infrastructure.Binance;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
 namespace BinanceBot.Tests;
@@ -15,8 +17,7 @@ public class ApiKeyHeaderTests
         var http = new HttpClient(handler);
         var settings = new AppSettings { ApiKey = ApiKey, ApiSecret = "secret" };
         var options = Options.Create(new BinanceOptions(true));
-        var signer = new Signer("secret");
-        return new BinanceFuturesClient(http, settings, options, signer);
+        return new BinanceFuturesClient(http, settings, options, new FakeClock(), NullLogger<BinanceFuturesClient>.Instance);
     }
 
     private class FakeHandler : HttpMessageHandler
@@ -40,17 +41,13 @@ public class ApiKeyHeaderTests
         var handler = new FakeHandler();
         handler.EnqueueResponse(new HttpResponseMessage(HttpStatusCode.OK)
         {
-            Content = new StringContent("{\"serverTime\":0}")
-        });
-        handler.EnqueueResponse(new HttpResponseMessage(HttpStatusCode.OK)
-        {
             Content = new StringContent("{}")
         });
 
         var client = CreateClient(handler);
         await client.SetLeverageAsync("BTCUSDT", 10);
 
-        var req = handler.Requests.Last();
+        var req = handler.Requests.Single();
         Assert.True(req.Headers.TryGetValues("X-MBX-APIKEY", out var values));
         Assert.Equal(ApiKey, Assert.Single(values));
     }
@@ -70,6 +67,10 @@ public class ApiKeyHeaderTests
         var req = handler.Requests.Single();
         Assert.True(req.Headers.TryGetValues("X-MBX-APIKEY", out var values));
         Assert.Equal(ApiKey, Assert.Single(values));
+    }
+    private sealed class FakeClock : IBinanceClock
+    {
+        public long UtcNowMsAdjusted() => 0;
     }
 }
 
