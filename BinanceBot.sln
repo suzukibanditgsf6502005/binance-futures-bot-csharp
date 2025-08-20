@@ -7,6 +7,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BinanceBot", "BinanceBot.cs
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BinanceBot.Tests", "BinanceBot.Tests\BinanceBot.Tests.csproj", "{C9D088C3-C5FD-48F7-A946-F7F03B47F99F}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{30F1D84A-7776-44B8-89F2-0719C266E87F}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Infrastructure.Tests", "tests\Infrastructure.Tests\Infrastructure.Tests.csproj", "{635E507F-CF02-4B2F-B941-44C6F98BD8BD}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -24,5 +28,12 @@ Global
 		{C9D088C3-C5FD-48F7-A946-F7F03B47F99F}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{C9D088C3-C5FD-48F7-A946-F7F03B47F99F}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{C9D088C3-C5FD-48F7-A946-F7F03B47F99F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{635E507F-CF02-4B2F-B941-44C6F98BD8BD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{635E507F-CF02-4B2F-B941-44C6F98BD8BD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{635E507F-CF02-4B2F-B941-44C6F98BD8BD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{635E507F-CF02-4B2F-B941-44C6F98BD8BD}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{635E507F-CF02-4B2F-B941-44C6F98BD8BD} = {30F1D84A-7776-44B8-89F2-0719C266E87F}
 	EndGlobalSection
 EndGlobal
