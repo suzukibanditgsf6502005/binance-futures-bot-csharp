@@ -3,6 +3,7 @@ using Skender.Stock.Indicators;
 using Serilog;
 using Domain.Trading;
 using Infrastructure.Binance.Models;
+using System.Net.Http;
 
 namespace Application;
 
@@ -48,9 +49,18 @@ public class BotHostedService : IHostedService
 
         foreach (var s in _settings.Symbols)
         {
-            await _exchange.SetLeverageAsync(s, _settings.Leverage);
-            Log.Information("Leverage set to x{Leverage} on {Symbol}", _settings.Leverage, s);
+            try
+            {
+                await _exchange.SetLeverageAsync(s, _settings.Leverage);
+                Log.Information("Leverage set to x{Leverage} on {Symbol}", _settings.Leverage, s);
+            }
+            catch (HttpRequestException ex)
+            {
+                Log.Error("{Symbol}: failed to set leverage x{Lev}: {Error}", s, _settings.Leverage, ex.Message);
+            }
         }
+
+        Log.Information("Using interval {Interval}", _settings.Interval);
 
         _timer = new PeriodicTimer(TimeSpan.FromMinutes(1));
         _executingTask = Task.Run(() => ExecuteAsync(_cts.Token));
@@ -147,14 +157,23 @@ public class BotHostedService : IHostedService
 
         if ((hasLong || hasShort) && _trades.TryGetValue(symbol, out var active))
         {
-            var changed = active.Update(last.Close, lastAtr, _settings.BreakEvenAtRr, _settings.AtrTrailMultiple, filters);
-            if (changed)
+            var update = active.Update(last.Close, lastAtr, _settings.BreakEvenAtR, _settings.TrailingAtrMultiple, filters, _settings.TimeStopBars);
+            if (update.StopChanged)
             {
                 var exitSide = active.Side == OrderSide.Buy ? OrderSide.Sell : OrderSide.Buy;
                 if (!_dryRun)
                     await _exchange.PlaceStopMarketCloseAsync(symbol, exitSide, active.Stop);
                 Log.Information("{Symbol}: SL updated to {Sl:F2}", symbol, active.Stop);
                 await _alerts.SendAsync($"{symbol}: SL updated to {active.Stop:F2}");
+            }
+            if (update.TimeExit)
+            {
+                if (!_dryRun)
+                    await _exchange.ClosePositionMarketAsync(symbol, active.Side == OrderSide.Buy ? PositionSide.Long : PositionSide.Short);
+                Log.Information("{Symbol}: Time-stop exit after {Bars} bars", symbol, active.BarsInTrade);
+                await _alerts.SendAsync($"{symbol}: Time-stop exit after {active.BarsInTrade} bars");
+                _trades.Remove(symbol);
+                return;
             }
         }
 
@@ -177,29 +196,30 @@ public class BotHostedService : IHostedService
             var stopDistanceUsd = Math.Max(lastAtr * _settings.AtrMultiple, 0.001m);
             var isShort = signal == TradeSignal.Short;
             var stopPrice = isShort ? last.Close + stopDistanceUsd : last.Close - stopDistanceUsd;
+            var tpPrice = isShort ? last.Close - stopDistanceUsd * _settings.Rrr : last.Close + stopDistanceUsd * _settings.Rrr;
 
             if (!_sizer.TrySize(symbol, OrderType.Market, last.Close, stopPrice, riskPerTrade, out var qty, out var reason))
             {
-                Log.Information("{Symbol}: skip (sizing failed) -> {Reason}. risk={Risk:F2} entry={Entry:F2} stopDistanceUsd={StopDist:F2} stopPrice={StopPx:F2} step={Step} minQty={MinQty} minNotional={MinNotional}",
-                    symbol, reason, riskPerTrade, last.Close, stopDistanceUsd, stopPrice, filters.StepSize, filters.MinQty, filters.MinNotional);
+                Log.Information("{Symbol}: skip (sizing failed) -> {Reason}. risk={Risk:F2} entry={Entry:F2} stopDistanceUsd={StopDist:F2} stopPrice={StopPx:F2} tpPrice={TpPx:F2} beAtR={BeAtR:F2} trailAtr={TrailAtr:F2} timeStopBars={TimeBars} step={Step} minQty={MinQty} minNotional={MinNotional}",
+                    symbol, reason, riskPerTrade, last.Close, stopDistanceUsd, stopPrice, tpPrice, _settings.BreakEvenAtR, _settings.TrailingAtrMultiple, _settings.TimeStopBars, filters.StepSize, filters.MinQty, filters.MinNotional);
                 return;
             }
 
-            Log.Information("{Symbol}: risk={Risk:F2} entry={Entry:F2} stopDistanceUsd={StopDist:F2} stopPrice={StopPx:F2} qty={Qty} step={Step} minQty={MinQty} minNotional={MinNotional}",
-                symbol, riskPerTrade, last.Close, stopDistanceUsd, stopPrice, qty, filters.StepSize, filters.MinQty, filters.MinNotional);
+            Log.Information("{Symbol}: risk={Risk:F2} entry={Entry:F2} stopDistanceUsd={StopDist:F2} stopPrice={StopPx:F2} tpPrice={TpPx:F2} beAtR={BeAtR:F2} trailAtr={TrailAtr:F2} timeStopBars={TimeBars} qty={Qty} step={Step} minQty={MinQty} minNotional={MinNotional}",
+                symbol, riskPerTrade, last.Close, stopDistanceUsd, stopPrice, tpPrice, _settings.BreakEvenAtR, _settings.TrailingAtrMultiple, _settings.TimeStopBars, qty, filters.StepSize, filters.MinQty, filters.MinNotional);
 
             if (signal == TradeSignal.Long)
             {
                 await _orderExecutor.OpenWithBracketAsync(symbol, OrderSide.Buy, qty, last.Close, stopDistanceUsd, filters);
                 var sl = filters.ClampPrice(stopPrice);
-                var tp = filters.ClampPrice(last.Close + stopDistanceUsd * _settings.Rrr);
+                var tp = filters.ClampPrice(tpPrice);
                 _trades[symbol] = new TradeState(OrderSide.Buy, last.Close, sl, tp);
             }
             else if (signal == TradeSignal.Short)
             {
                 await _orderExecutor.OpenWithBracketAsync(symbol, OrderSide.Sell, qty, last.Close, stopDistanceUsd, filters);
                 var sl = filters.ClampPrice(stopPrice);
-                var tp = filters.ClampPrice(last.Close - stopDistanceUsd * _settings.Rrr);
+                var tp = filters.ClampPrice(tpPrice);
                 _trades[symbol] = new TradeState(OrderSide.Sell, last.Close, sl, tp);
             }
             else
