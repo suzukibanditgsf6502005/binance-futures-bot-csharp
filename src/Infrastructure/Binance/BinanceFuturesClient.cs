@@ -19,11 +19,7 @@ public class BinanceFuturesClient : IExchangeClient
         _http = http;
         _apiKey = settings.ApiKey;
         _signer = signer;
-
-        // Do NOT shadow the parameter. Keep a single source of truth:
         _options = options ?? new BinanceOptions(settings.UseTestnet);
-
-        // Use BaseAddress; remove any _baseUrl field throughout the class.
         _http.BaseAddress = new Uri(_options.BaseUrl);
     }
 
@@ -116,7 +112,7 @@ public class BinanceFuturesClient : IExchangeClient
         await SendSignedAsync(HttpMethod.Post, "/fapi/v1/order", p);
     }
 
-    public async Task ClosePositionMarketAsync(string symbol, PositionSide posSide)
+    public async Task ClosePositionMarketAsync(string symbol, PositionSide _)
     {
         var pr = await GetPositionRiskAsync(symbol);
         var qty = Math.Abs(pr.PositionAmt);
@@ -162,9 +158,6 @@ public class BinanceFuturesClient : IExchangeClient
         var finalQuery = $"{encodedQuery}&signature={signature}";
 
         var url = path + "?" + finalQuery;
-        Log.Debug("GetPositionRisk query: nowMs={NowMs} encodedQuery={EncodedQuery} url={Url}",
-            nowMs, encodedQuery, url);
-
         using var req = new HttpRequestMessage(HttpMethod.Get, url);
         req.Headers.TryAddWithoutValidation("X-MBX-APIKEY", _apiKey);
 
