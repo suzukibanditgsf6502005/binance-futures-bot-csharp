@@ -14,7 +14,7 @@ public class OrderSizingServiceTests
         var ok = svc.TrySize("BTCUSDT", OrderType.Market, entryPrice:113985.80m, stopPrice:113985.80m - 4329.44m, riskUsd:150m,
                              out var qty, out var reason);
         Assert.True(ok);
-        Assert.True(qty >= 0.035m - 0.0005m);
+        Assert.Equal(0.034m, qty);
     }
 
     [Fact]

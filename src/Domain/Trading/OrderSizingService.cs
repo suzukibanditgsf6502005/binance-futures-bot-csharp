@@ -1,5 +1,4 @@
 using System;
-using System.Globalization;
 using Infrastructure.Binance.Models;
 using Microsoft.Extensions.Logging;
 
@@ -37,17 +36,18 @@ public sealed class OrderSizingService
             return false;
         }
 
-        var stopDistance = Math.Abs(entryPrice - stopPrice);
-        if (stopDistance <= 0m)
+        var stopDistanceUsd = Math.Abs(entryPrice - stopPrice);
+        if (stopDistanceUsd <= 0m)
         {
             reason = "Invalid stop distance.";
             return false;
         }
 
-        var qtyRaw = riskUsd / stopDistance;
+        var qtyRaw = riskUsd / stopDistanceUsd;
         var step = f.StepSize > 0m ? f.StepSize : 0.000001m;
 
-        qtyRounded = Math.Round(qtyRaw / step) * step;
+        // Round down to not exceed risk
+        qtyRounded = Math.Floor(qtyRaw / step) * step;
 
         var minQty = orderType == OrderType.Market && f.MarketMinQty.HasValue
             ? f.MarketMinQty.Value
@@ -56,7 +56,7 @@ public sealed class OrderSizingService
         if (qtyRounded < step)
             qtyRounded = 0m;
 
-        decimal RequiredRisk(decimal q) => q * stopDistance;
+        decimal RequiredRisk(decimal q) => q * stopDistanceUsd;
 
         if (qtyRounded < minQty)
         {
@@ -64,7 +64,7 @@ public sealed class OrderSizingService
             var neededRisk = RequiredRisk(neededQty);
             if (neededRisk > riskUsd)
             {
-                reason = $"Below minQty. minQty={minQty} step={step} qtyRaw={qtyRaw} risk={riskUsd} neededRisk={neededRisk} stop={stopDistance} price={entryPrice}";
+                reason = $"Below minQty. minQty={minQty} step={step} qtyRaw={qtyRaw} risk={riskUsd} neededRisk={neededRisk} stopDistanceUsd={stopDistanceUsd} price={entryPrice}";
                 return false;
             }
             qtyRounded = neededQty;
@@ -79,7 +79,7 @@ public sealed class OrderSizingService
                 var neededRisk = RequiredRisk(neededQty);
                 if (neededRisk > riskUsd)
                 {
-                    reason = $"Below minNotional. minNotional={f.MinNotional} notional={notional} step={step} qty={qtyRounded} risk={riskUsd} neededRisk={neededRisk} stop={stopDistance} price={entryPrice}";
+                    reason = $"Below minNotional. minNotional={f.MinNotional} notional={notional} step={step} qty={qtyRounded} risk={riskUsd} neededRisk={neededRisk} stopDistanceUsd={stopDistanceUsd} price={entryPrice}";
                     return false;
                 }
                 qtyRounded = neededQty;
@@ -88,12 +88,12 @@ public sealed class OrderSizingService
 
         if (qtyRounded <= 0m)
         {
-            reason = $"Qty <= 0 after filters. qtyRaw={qtyRaw} step={step} risk={riskUsd} stop={stopDistance} price={entryPrice}";
+            reason = $"Qty <= 0 after filters. qtyRaw={qtyRaw} step={step} risk={riskUsd} stopDistanceUsd={stopDistanceUsd} price={entryPrice}";
             return false;
         }
 
-        _logger.LogDebug("Sized {Symbol} {OrderType} qty={Qty} (raw={Raw}) risk={Risk} stop={Stop} step={Step} minQty={MinQty} minNotional={MinNotional}",
-            symbol, orderType, qtyRounded, qtyRaw, riskUsd, stopDistance, step, minQty, f.MinNotional);
+        _logger.LogDebug("Sized {Symbol} {OrderType} qty={Qty} (raw={Raw}) risk={Risk} stopDistanceUsd={StopDist} step={Step} minQty={MinQty} minNotional={MinNotional}",
+            symbol, orderType, qtyRounded, qtyRaw, riskUsd, stopDistanceUsd, step, minQty, f.MinNotional);
         return true;
     }
 }
