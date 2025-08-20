@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http;
 using System.Linq;
 using Infrastructure.Binance;
+using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace Infrastructure.Tests;
@@ -49,7 +50,7 @@ public class BinanceSigningTests
 
         var http = new HttpClient(handler);
         var settings = new AppSettings { ApiKey = apiKey, ApiSecret = "testsecret" };
-        var options = new BinanceOptions(true);
+        var options = Options.Create(new BinanceOptions(true));
         var signer = new Signer("testsecret");
         var client = new BinanceFuturesClient(http, settings, options, signer);
 

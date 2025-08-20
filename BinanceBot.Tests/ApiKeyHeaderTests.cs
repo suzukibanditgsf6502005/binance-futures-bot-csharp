@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http;
 using System.Linq;
 using Infrastructure.Binance;
+using Microsoft.Extensions.Options;
 
 namespace BinanceBot.Tests;
 
@@ -13,7 +14,7 @@ public class ApiKeyHeaderTests
     {
         var http = new HttpClient(handler);
         var settings = new AppSettings { ApiKey = ApiKey, ApiSecret = "secret" };
-        var options = new BinanceOptions(true);
+        var options = Options.Create(new BinanceOptions(true));
         var signer = new Signer("secret");
         return new BinanceFuturesClient(http, settings, options, signer);
     }
